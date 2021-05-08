@@ -2,10 +2,15 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include <stdio.h>
+#include <string>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
+
+unsigned int load_shaders();
 
 static void glfw_error_callback(int error, const char* description)
 {
@@ -58,99 +63,7 @@ int main(int, char**)
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     // ---------------------------------------------------
-    const char* vertexShaderSource = "#version 330 core\n"
-      "layout (location = 0) in vec3 aPos;\n"
-      "layout (location = 1) in vec3 aColor;\n"
-      "out vec3 colour;\n"
-      "void main()\n"
-      "{\n"
-      "  gl_Position = vec4(aPos, 1.0);\n"
-      "  colour = aColor;\n"
-      "}\0";
-    unsigned int vertexShader;
-    vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-    glCompileShader(vertexShader);
-
-    int success;
-    char infoLog[512];
-    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-        std::cout << "vertex shader compilation failed\n" << infoLog << std::endl;
-    }
-
-    const char* fragmentShaderSource = "#version 330 core\n"
-      "out vec4 FragColor;\n"
-      "// in vec3 colour;\n"
-      "flat in vec3 colours[3];\n"
-      "in vec3 coord;\n"
-      "void main()\n"
-      "{\n"
-      "  // int i = (coord.x > coord.y && coord.x > coord.z) ? 0 : ((coord.y > coord.z) ? 1 : 2);\n"
-      "  // int i = (coord.x > 0.1 && coord.x < 0.9) ? 0 : 1;\n"
-      "  // FragColor = vec4(colours[i], 1.0f);\n"
-      "  FragColor = vec4(coord.x * colours[0] + coord.y * colours[1] + coord.z * colours[2], 1.0);\n"
-      "  // FragColor = vec4(colour, 1.0);\n"
-      "}\n\0";
-    unsigned int fragmentShader;
-    fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-    glCompileShader(fragmentShader);
-    
-    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-        std::cout << "Fragment shader compilation failed\n" << infoLog << std::endl;
-    }
-
-    const char* geometryShaderSource = "#version 330 core\n"
-      "layout (triangles) in;\n"
-      "layout (triangle_strip, max_vertices = 3) out;\n"
-      "in vec3 colour[];\n"
-      "flat out vec3 colours[3];\n"
-      "out vec3 coord;\n"
-      "void main()\n"
-      "{\n"
-      "for (int i = 0; i < 3; i++) { colours[i] = colour[i]; }\n"
-      "for (int i = 0; i < 3; i++)\n"
-      "{\n"
-      "  coord = vec3(0.0);\n"
-      "  coord[i] = 1.0;\n"
-      "  gl_Position = gl_in[i].gl_Position;\n"
-      "  EmitVertex();\n"
-      "}\n"
-      "}\n\0";
-    unsigned int geometryShader;
-    geometryShader = glCreateShader(GL_GEOMETRY_SHADER);
-    glShaderSource(geometryShader, 1, &geometryShaderSource, NULL);
-    glCompileShader(geometryShader);
-    
-    glGetShaderiv(geometryShader, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(geometryShader, 512, NULL, infoLog);
-        std::cout << "Geometry shader compilation failed\n" << infoLog << std::endl;
-    }
-
-    unsigned int shaderProgram;
-    shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, geometryShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    glLinkProgram(shaderProgram);
-
-    glGetShaderiv(shaderProgram, GL_LINK_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(shaderProgram, 512, NULL, infoLog);
-        std::cout << "Linking shaders failed\n" << infoLog << std::endl;
-    }
-
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
+    unsigned int shaderProgram = load_shaders();
     
     // ---------------------------------------------------
     float vertices[] = {
@@ -252,10 +165,6 @@ int main(int, char**)
         vertices[2 * 6 + 5] = vcolor3.z;
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
-        // glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*) 0);
-        // glEnableVertexAttribArray(0);
-        // glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*) (3 * sizeof(float)));
-        // glEnableVertexAttribArray(1);
 
         glBindVertexArray(VAO);
         glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -279,4 +188,58 @@ int main(int, char**)
     glfwTerminate();
 
     return 0;
+}
+
+unsigned int load_shader(std::string path, GLenum type)
+{
+    std::ifstream t (path);
+    std::stringstream buffer;
+    buffer << t.rdbuf();
+    std::string source_string = buffer.str();
+    const char* source_code = source_string.c_str();
+    unsigned int shader;
+    shader = glCreateShader(type);
+    glShaderSource(shader, 1, &source_code, NULL);
+    glCompileShader(shader);
+
+    int success;
+    char infoLog[512];
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success)
+    {
+        glGetShaderInfoLog(shader, 512, NULL, infoLog);
+        std::cout << "shader compilation failed\n" << infoLog << std::endl;
+    }
+    return shader;
+}
+
+unsigned int load_shaders()
+{
+    unsigned int vertexShader = load_shader("/home/daang/research_project/color_optimization/vertex.shader", GL_VERTEX_SHADER);
+    int success;
+    char infoLog[512];
+
+    unsigned int fragmentShader = load_shader("/home/daang/research_project/color_optimization/fragment.shader", GL_FRAGMENT_SHADER);
+
+    unsigned int geometryShader = load_shader("/home/daang/research_project/color_optimization/geometry.shader", GL_GEOMETRY_SHADER);
+
+    unsigned int shaderProgram;
+    shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, geometryShader);
+    glAttachShader(shaderProgram, fragmentShader);
+    glLinkProgram(shaderProgram);
+
+    glGetShaderiv(shaderProgram, GL_LINK_STATUS, &success);
+    if (!success)
+    {
+        glGetShaderInfoLog(shaderProgram, 512, NULL, infoLog);
+        std::cout << "Linking shaders failed\n" << infoLog << std::endl;
+    }
+
+    glDeleteShader(vertexShader);
+    glDeleteShader(geometryShader);
+    glDeleteShader(fragmentShader);
+
+    return shaderProgram;
 }
