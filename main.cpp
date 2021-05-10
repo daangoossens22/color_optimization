@@ -6,11 +6,10 @@
 
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
+#include "shader.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-
-#include "shader.h"
 
 
 static void glfw_error_callback(int error, const char* description)
@@ -35,7 +34,7 @@ int main(int, char**)
     //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
 
     // Create window with graphics context
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Test", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(900, 900, "Test", NULL, NULL);
     if (window == NULL)
     {
         glfwTerminate();
@@ -127,7 +126,7 @@ int main(int, char**)
 
             ImGui::ColorEdit3("clear color", (float*)&clear_color);
 
-            ImGui::Combo("mode", &mode, "constant\0bilinear\0testing\0\0");
+            ImGui::Combo("mode", &mode, "constant\0bilinear\0step\0smooth step\0testing\0\0");
 
             ImGui::ColorEdit3("vertex 1", (float*)&vcolor1);
             ImGui::ColorEdit3("vertex 2", (float*)&vcolor2);
