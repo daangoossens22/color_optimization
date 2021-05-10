@@ -71,20 +71,30 @@ int main(int, char**)
     
     // ---------------------------------------------------
     float vertices[] = {
-       0.0f,  0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-       1.0f,  0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-       0.5f,  0.866025f, 0.0f, 0.0f, 0.0f, 1.0f
+       0.0f,  0.0f, 0.0f, 1.0f, 0.0f, 0.0f, // bottom left
+       1.0f,  0.0f, 0.0f, 0.0f, 1.0f, 0.0f, // bottom right
+       0.0f,  1.0f, 0.0f, 0.0f, 0.0f, 1.0f, // top left
+       1.0f,  1.0f, 0.0f, 0.0f, 0.0f, 1.0f  // top right
     };
 
-    unsigned int VAO, VBO;
+    unsigned int indices[] = {
+        0, 1, 2,
+        1, 2, 3
+    };
+
+    unsigned int VAO, VBO, EBO;
 
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
+    glGenBuffers(1, &EBO);
 
     glBindVertexArray(VAO);
 
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_DYNAMIC_DRAW);
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*) 0);
     glEnableVertexAttribArray(0);
@@ -182,8 +192,13 @@ int main(int, char**)
         vertices[2 * 6 + 3] = vcolor3.x;
         vertices[2 * 6 + 4] = vcolor3.y;
         vertices[2 * 6 + 5] = vcolor3.z;
+        vertices[3 * 6 + 3] = vcolor3.x;
+        vertices[3 * 6 + 4] = vcolor3.y;
+        vertices[3 * 6 + 5] = vcolor3.z;
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_DYNAMIC_DRAW);
         glUniform4f(glGetUniformLocation(shader.ID, "weight"), weightx, weighty, weightz, weightw);
         glUniform1i(glGetUniformLocation(shader.ID, "mode"), mode);
         // glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)display_w / (float)display_h, 0.1f, 100.0f);
@@ -192,7 +207,8 @@ int main(int, char**)
         glUniformMatrix4fv(glGetUniformLocation(shader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
 
         glBindVertexArray(VAO);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        // glDrawArrays(GL_TRIANGLES, 0, 3);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
