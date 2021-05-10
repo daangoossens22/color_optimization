@@ -1,14 +1,15 @@
 #version 330 core
 out vec4 FragColor;
-// in vec3 colour;
 flat in vec3 colours[3];
 flat in vec3 vert[3];
 in vec3 coord;
 
-uniform vec3 weight;
+uniform vec4 weight;
 uniform int mode;
 const int constant_color = 0;
 const int bilinear_interpolation = 1;
+const int step_cutoff = 2;
+const int step_smooth = 3;
 
 void main()
 {
@@ -23,9 +24,43 @@ void main()
   {
     color = coord.x * colours[0] + coord.y * colours[1] + coord.z * colours[2];
   }
+  else if (mode == step_cutoff)
+  {
+    vec2 dir1 = weight.zw - weight.xy;
+    dir1 = vec2(dir1.y, -dir1.x); // rotate 90 degrees
+    vec2 dir2 = normal_coor.xy - weight.xy;
+    float result = dot(dir1, dir2); // vecors don't need to be normalized -> only need to know the sign
+
+    color = step(0.0f, result) * colours[0];
+    // else if (result >= 0.0f)
+    // {
+    //   color = colours[0];
+    // }
+
+    if (length(normal_coor.xy - weight.xy) < 0.01) { color = colours[1]; }
+    else if (length(normal_coor.xy - weight.zw) < 0.01) { color = colours[2]; }
+  }
+  else if (mode == step_smooth)
+  {
+    vec2 dir1 = weight.zw - weight.xy;
+    dir1 = vec2(dir1.y, -dir1.x); // rotate 90 degrees
+    vec2 dir2 = normal_coor.xy - weight.xy;
+    float result = dot(dir1, dir2); // vecors don't need to be normalized -> only need to know the sign
+
+    color = smoothstep(0.0f, 0.01f, result) * colours[0];
+
+    if (length(normal_coor.xy - weight.xy) < 0.01) { color = colours[1]; }
+    else if (length(normal_coor.xy - weight.zw) < 0.01) { color = colours[2]; }
+  }
   else
   {
-    if (length(normal_coor) < 0.48)
+    // color = colours[1] * length(normal_coor - weight);
+    // float lenn = length(weight.xy - normal_coor.xy);
+    // color = lenn * colours[0];
+    // if (length(normal_coor.xy - weight.xy) < 0.2)
+    // vec2 lenn = weight.xy - normal_coor.xy;
+    vec2 lenn = vec2(weight.x - normal_coor.x, weight.y - normal_coor.y);
+    if ((lenn.x * lenn.x) + (lenn.y * lenn.y) < 0.1)
     {
       color = colours[0];
     }
@@ -35,5 +70,6 @@ void main()
     //   color = colours[1];
     // }
   }
+
   FragColor = vec4(color, 1.0);
 }

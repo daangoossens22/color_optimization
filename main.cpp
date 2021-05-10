@@ -19,6 +19,12 @@ static void glfw_error_callback(int error, const char* description)
 
 int main(int, char**)
 {
+    float random_colors[101*101*3];
+    for (int i = 0; i < 101*101*3; i++)
+    {
+        random_colors[i] = (float)std::rand() / (RAND_MAX + 1.0f);
+    }
+
     // Setup window
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
@@ -66,8 +72,7 @@ int main(int, char**)
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     // ---------------------------------------------------
-    // Shader shader ("vertex.shader", "geometry.shader", "fragment.shader");
-    Shader shader ("vertex2.shader", "geometry2.shader", "fragment2.shader");
+    Shader shader ("vertex.shader", "geometry.shader", "fragment.shader");
     
     // ---------------------------------------------------
     float vertices[] = {
@@ -108,7 +113,7 @@ int main(int, char**)
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     // ImVec2 num_triangles_dimensions = ImVec2(1, 1);
-    int num_triangles_dimensions[2] = { 1, 1 };
+    int num_triangles_dimensions[2] = { 2, 2 };
     int mode = 2;
     ImVec4 vcolor1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
     ImVec4 vcolor2 = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
@@ -183,22 +188,61 @@ int main(int, char**)
         shader.use();
 
         // set/update shader parameters
-        vertices[0 * 6 + 3] = vcolor1.x;
-        vertices[0 * 6 + 4] = vcolor1.y;
-        vertices[0 * 6 + 5] = vcolor1.z;
-        vertices[1 * 6 + 3] = vcolor2.x;
-        vertices[1 * 6 + 4] = vcolor2.y;
-        vertices[1 * 6 + 5] = vcolor2.z;
-        vertices[2 * 6 + 3] = vcolor3.x;
-        vertices[2 * 6 + 4] = vcolor3.y;
-        vertices[2 * 6 + 5] = vcolor3.z;
-        vertices[3 * 6 + 3] = vcolor3.x;
-        vertices[3 * 6 + 4] = vcolor3.y;
-        vertices[3 * 6 + 5] = vcolor3.z;
+        int x_max = num_triangles_dimensions[0] + 1;
+        int y_max = num_triangles_dimensions[1] + 1;
+        float x_step = 1.0f / ((float)x_max - 1.0f);
+        float y_step = 1.0f / ((float)y_max - 1.0f);
+        
+        float vertices[x_max * y_max * 6]; // 6 elements per vertex
+        for (int y = 0; y < y_max; y++)
+        {
+            for (int x = 0; x < x_max; x++)
+            {
+                int base_index = (x + y * x_max) * 6;
+                vertices[base_index + 0] = x * x_step;
+                vertices[base_index + 1] = y * y_step;
+                vertices[base_index + 2] = 0.0f;
+                // random colors
+                vertices[base_index + 3] = random_colors[base_index / 2];
+                vertices[base_index + 4] = random_colors[base_index / 2 + 1];
+                vertices[base_index + 5] = random_colors[base_index / 2 + 2];
+            }
+        }
+
+        x_max--;
+        y_max--;
+        int num_vertices = x_max * y_max * 2 * 3; // 2 triangles, 3 values per triangle
+        unsigned int indices[num_vertices];
+        for (int y = 0; y < y_max; y++)
+        {
+            for (int x = 0; x < x_max; x++)
+            {
+                unsigned int bottom_left = (x_max + 1) * y + x;
+                unsigned int bottom_right = (x_max + 1) * y + x + 1;
+                unsigned int top_left = (x_max + 1) * (y + 1) + x;
+                unsigned int top_right = (x_max + 1) * (y + 1) + x + 1;
+
+                int base_index = 2 * 3 * (x + y * x_max);
+                // triangle 1
+                indices[base_index + 0] = bottom_left;
+                indices[base_index + 1] = bottom_right;
+                indices[base_index + 2] = top_left;
+                // triangle 2
+                indices[base_index + 3] = bottom_right;
+                indices[base_index + 4] = top_left;
+                indices[base_index + 5] = top_right;
+            }
+        }
+        
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_DYNAMIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*) 0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*) (3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+
         glUniform4f(glGetUniformLocation(shader.ID, "weight"), weightx, weighty, weightz, weightw);
         glUniform1i(glGetUniformLocation(shader.ID, "mode"), mode);
         // glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)display_w / (float)display_h, 0.1f, 100.0f);
@@ -208,7 +252,7 @@ int main(int, char**)
 
         glBindVertexArray(VAO);
         // glDrawArrays(GL_TRIANGLES, 0, 3);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, num_vertices, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

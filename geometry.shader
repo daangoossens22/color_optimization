@@ -8,12 +8,15 @@ out vec3 coord;
 
 void main()
 {
-  for (int i = 0; i < 3; i++) { colours[i] = colour[i]; }
+  for (int i = 0; i < 3; i++)
+  {
+    colours[i] = colour[i];
+    vert[i] = gl_in[i].gl_Position.xyz / gl_in[i].gl_Position.w;
+  }
   for (int i = 0; i < 3; i++)
   {
     coord = vec3(0.0);
     coord[i] = 1.0;
-    vert[i] = gl_in[i].gl_Position.xyz / gl_in[i].gl_Position.w;
     gl_Position = gl_in[i].gl_Position;
     EmitVertex();
   }
