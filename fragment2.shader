@@ -48,10 +48,6 @@ void main()
     float result = dot(dir1, dir2); // vecors don't need to be normalized -> only need to know the sign
 
     color = smoothstep(0.0f, 0.01f, result) * colours[0];
-    // else if (result >= 0.0f)
-    // {
-    //   color = colours[0];
-    // }
 
     if (length(normal_coor.xy - weight.xy) < 0.01) { color = colours[1]; }
     else if (length(normal_coor.xy - weight.zw) < 0.01) { color = colours[2]; }

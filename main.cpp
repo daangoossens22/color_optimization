@@ -34,7 +34,8 @@ int main(int, char**)
     //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
 
     // Create window with graphics context
-    GLFWwindow* window = glfwCreateWindow(900, 900, "Test", NULL, NULL);
+    // GLFWwindow* window = glfwCreateWindow(900, 900, "Test", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1600, 900, "Test", NULL, NULL);
     if (window == NULL)
     {
         glfwTerminate();
@@ -96,6 +97,8 @@ int main(int, char**)
     bool show_demo_window = false;
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+    // ImVec2 num_triangles_dimensions = ImVec2(1, 1);
+    int num_triangles_dimensions[2] = { 1, 1 };
     int mode = 2;
     ImVec4 vcolor1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
     ImVec4 vcolor2 = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
@@ -125,6 +128,8 @@ int main(int, char**)
             ImGui::Checkbox("Another Window", &show_another_window);
 
             ImGui::ColorEdit3("clear color", (float*)&clear_color);
+
+            ImGui::SliderInt2("# triangles width x height", num_triangles_dimensions, 1, 100);
 
             ImGui::Combo("mode", &mode, "constant\0bilinear\0step\0smooth step\0testing\0\0");
 
@@ -160,12 +165,14 @@ int main(int, char**)
         ImGui::Render();
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
-        glViewport(0, 0, display_w, display_h);
+        glViewport(display_w - display_h, 0, display_h, display_h); // have a square viewport where the imgui stuff can be on the left
         glClearColor(clear_color.x, clear_color.y, clear_color.z, 1.0);
         glClear(GL_COLOR_BUFFER_BIT);
 
 
         shader.use();
+
+        // set/update shader parameters
         vertices[0 * 6 + 3] = vcolor1.x;
         vertices[0 * 6 + 4] = vcolor1.y;
         vertices[0 * 6 + 5] = vcolor1.z;
@@ -180,8 +187,8 @@ int main(int, char**)
         glUniform4f(glGetUniformLocation(shader.ID, "weight"), weightx, weighty, weightz, weightw);
         glUniform1i(glGetUniformLocation(shader.ID, "mode"), mode);
         // glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)display_w / (float)display_h, 0.1f, 100.0f);
-        // glm::mat4 proj = glm::ortho((float)display_h - (float)display_w, (float)display_h, 0.0f, (float)display_h, -10.0f, 10.0f);
-        glm::mat4 proj = glm::ortho((-(float)display_w / (float)display_h) + 1.0f, 1.0f, 0.0f, 1.0f, -10.0f, 10.0f);
+        // glm::mat4 proj = glm::ortho((-(float)display_w / (float)display_h) + 1.0f, 1.0f, 0.0f, 1.0f, -10.0f, 10.0f);
+        glm::mat4 proj = glm::ortho(0.0f, 1.0f, 0.0f, 1.0f, -10.0f, 10.0f); // have a coordinate system (0, 0) bottom left and (1, 1) top right
         glUniformMatrix4fv(glGetUniformLocation(shader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
 
         glBindVertexArray(VAO);
