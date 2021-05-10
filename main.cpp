@@ -2,15 +2,16 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include <stdio.h>
-#include <string>
-#include <fstream>
-#include <iostream>
-#include <sstream>
+#include <cmath>
 
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
-unsigned int load_shaders();
+#include "shader.h"
+
 
 static void glfw_error_callback(int error, const char* description)
 {
@@ -29,6 +30,8 @@ int main(int, char**)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE);
     //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
 
     // Create window with graphics context
@@ -63,13 +66,14 @@ int main(int, char**)
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     // ---------------------------------------------------
-    unsigned int shaderProgram = load_shaders();
+    // Shader shader ("vertex.shader", "geometry.shader", "fragment.shader");
+    Shader shader ("vertex2.shader", "geometry2.shader", "fragment2.shader");
     
     // ---------------------------------------------------
     float vertices[] = {
-      -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f,
-       0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f,
-       0.0f,  0.5f, 0.0f, 0.0f, 0.0f, 1.0f
+       0.0f,  0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+       1.0f,  0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+       0.5f,  0.866025f, 0.0f, 0.0f, 0.0f, 1.0f
     };
 
     unsigned int VAO, VBO;
@@ -89,15 +93,19 @@ int main(int, char**)
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    // --------------------------------------------------
-
-    // Our state
+    // imgui variables
     bool show_demo_window = false;
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+    int mode = 2;
     ImVec4 vcolor1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
     ImVec4 vcolor2 = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
     ImVec4 vcolor3 = ImVec4(0.0f, 0.0f, 1.0f, 1.0f);
+    float weightx = 0.0f;
+    float weighty = 0.0f;
+    float weightz = 0.0f;
+    float weightw = 0.0f;
+
 
     // Main loop
     while (!glfwWindowShouldClose(window))
@@ -117,12 +125,17 @@ int main(int, char**)
             ImGui::Checkbox("Demo Window", &show_demo_window);
             ImGui::Checkbox("Another Window", &show_another_window);
 
-            // ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
             ImGui::ColorEdit3("clear color", (float*)&clear_color);
+
+            ImGui::Combo("mode", &mode, "constant\0bilinear\0testing\0\0");
 
             ImGui::ColorEdit3("vertex 1", (float*)&vcolor1);
             ImGui::ColorEdit3("vertex 2", (float*)&vcolor2);
             ImGui::ColorEdit3("vertex 3", (float*)&vcolor3);
+            ImGui::SliderFloat("float 1", &weightx, -1.0f, 1.0f);
+            ImGui::SliderFloat("float 2", &weighty, -1.0f, 1.0f);
+            ImGui::SliderFloat("float 3", &weightz, -1.0f, 1.0f);
+            ImGui::SliderFloat("float 4", &weightw, -1.0f, 1.0f);
 
             // if (ImGui::Button("Button"))
             //     counter++;
@@ -149,11 +162,11 @@ int main(int, char**)
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
         glViewport(0, 0, display_w, display_h);
-        glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+        glClearColor(clear_color.x, clear_color.y, clear_color.z, 1.0);
         glClear(GL_COLOR_BUFFER_BIT);
 
 
-        glUseProgram(shaderProgram);
+        shader.use();
         vertices[0 * 6 + 3] = vcolor1.x;
         vertices[0 * 6 + 4] = vcolor1.y;
         vertices[0 * 6 + 5] = vcolor1.z;
@@ -165,6 +178,12 @@ int main(int, char**)
         vertices[2 * 6 + 5] = vcolor3.z;
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+        glUniform4f(glGetUniformLocation(shader.ID, "weight"), weightx, weighty, weightz, weightw);
+        glUniform1i(glGetUniformLocation(shader.ID, "mode"), mode);
+        // glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)display_w / (float)display_h, 0.1f, 100.0f);
+        // glm::mat4 proj = glm::ortho((float)display_h - (float)display_w, (float)display_h, 0.0f, (float)display_h, -10.0f, 10.0f);
+        glm::mat4 proj = glm::ortho((-(float)display_w / (float)display_h) + 1.0f, 1.0f, 0.0f, 1.0f, -10.0f, 10.0f);
+        glUniformMatrix4fv(glGetUniformLocation(shader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
 
         glBindVertexArray(VAO);
         glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -182,7 +201,7 @@ int main(int, char**)
 
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
-    glDeleteProgram(shaderProgram);
+    glDeleteProgram(shader.ID);
 
     glfwDestroyWindow(window);
     glfwTerminate();
@@ -190,56 +209,5 @@ int main(int, char**)
     return 0;
 }
 
-unsigned int load_shader(std::string path, GLenum type)
-{
-    std::ifstream t (path);
-    std::stringstream buffer;
-    buffer << t.rdbuf();
-    std::string source_string = buffer.str();
-    const char* source_code = source_string.c_str();
-    unsigned int shader;
-    shader = glCreateShader(type);
-    glShaderSource(shader, 1, &source_code, NULL);
-    glCompileShader(shader);
 
-    int success;
-    char infoLog[512];
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(shader, 512, NULL, infoLog);
-        std::cout << "shader compilation failed\n" << infoLog << std::endl;
-    }
-    return shader;
-}
 
-unsigned int load_shaders()
-{
-    unsigned int vertexShader = load_shader("/home/daang/research_project/color_optimization/vertex.shader", GL_VERTEX_SHADER);
-    int success;
-    char infoLog[512];
-
-    unsigned int fragmentShader = load_shader("/home/daang/research_project/color_optimization/fragment.shader", GL_FRAGMENT_SHADER);
-
-    unsigned int geometryShader = load_shader("/home/daang/research_project/color_optimization/geometry.shader", GL_GEOMETRY_SHADER);
-
-    unsigned int shaderProgram;
-    shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, geometryShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    glLinkProgram(shaderProgram);
-
-    glGetShaderiv(shaderProgram, GL_LINK_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(shaderProgram, 512, NULL, infoLog);
-        std::cout << "Linking shaders failed\n" << infoLog << std::endl;
-    }
-
-    glDeleteShader(vertexShader);
-    glDeleteShader(geometryShader);
-    glDeleteShader(fragmentShader);
-
-    return shaderProgram;
-}

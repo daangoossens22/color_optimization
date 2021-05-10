@@ -2,12 +2,38 @@
 out vec4 FragColor;
 // in vec3 colour;
 flat in vec3 colours[3];
+flat in vec3 vert[3];
 in vec3 coord;
+
+uniform vec3 weight;
+uniform int mode;
+const int constant_color = 0;
+const int bilinear_interpolation = 1;
+
 void main()
 {
-  // int i = (coord.x > coord.y && coord.x > coord.z) ? 0 : ((coord.y > coord.z) ? 1 : 2);
-  // int i = (coord.x > 0.1 && coord.x < 0.9) ? 0 : 1;
-  // FragColor = vec4(colours[i], 1.0f);
-  FragColor = vec4(coord.x * colours[0] + coord.y * colours[1] + coord.z * colours[2], 1.0);
-  // FragColor = vec4(colour, 1.0);
+  vec3 color = vec3(0.0, 0.0, 0.0);
+  vec3 normal_coor = coord.x * vert[0] + coord.y * vert[1] + coord.z * vert[2];
+
+  if (mode == constant_color)
+  {
+    color = colours[0];
+  }
+  else if (mode == bilinear_interpolation)
+  {
+    color = coord.x * colours[0] + coord.y * colours[1] + coord.z * colours[2];
+  }
+  else
+  {
+    if (length(normal_coor) < 0.48)
+    {
+      color = colours[0];
+    }
+    // color = step(weight, coord);
+    // if (coord.x > weight.x || coord.y > weight.y)
+    // {
+    //   color = colours[1];
+    // }
+  }
+  FragColor = vec4(color, 1.0);
 }
