@@ -17,7 +17,9 @@ void main()
   {
     coord = vec3(0.0);
     coord[i] = 1.0;
+    gl_PrimitiveID = gl_PrimitiveIDIn;
     gl_Position = gl_in[i].gl_Position;
     EmitVertex();
   }
+  EndPrimitive();
 }

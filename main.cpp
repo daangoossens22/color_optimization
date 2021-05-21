@@ -4,6 +4,12 @@
 #include <stdio.h>
 #include <cmath>
 
+// #include <opencv2/opencv.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/saliency.hpp>
+
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include "shader.h"
@@ -17,12 +23,30 @@ static void glfw_error_callback(int error, const char* description)
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
 
-int main(int, char**)
+// void load_picture(std::string file_name)
+// {
+// }
+
+int main(int argc, const char** argv)
 {
+    // load_picture(argv[1]);
+    std::string image_path = cv::samples::findFile("/home/daang/Documents/wallpaper\?2.png");
+    cv::Mat img = cv::imread(image_path, cv::IMREAD_COLOR);
+    if (img.empty())
+    {
+        std::cout << "error loading image: " << image_path << std::endl;
+    }
+
     float random_colors[101*101*3];
     for (int i = 0; i < 101*101*3; i++)
     {
         random_colors[i] = (float)std::rand() / (RAND_MAX + 1.0f);
+    }
+    int num_variables = 100 * 100 * 2;
+    float random_colors2[num_variables];
+    for (int i = 0; i < num_variables; i++)
+    {
+        random_colors2[i] = (float) i / (float) num_variables;
     }
 
     // Setup window
@@ -75,46 +99,58 @@ int main(int, char**)
     Shader shader ("vertex.shader", "geometry.shader", "fragment.shader");
     
     // ---------------------------------------------------
-    float vertices[] = {
-       0.0f,  0.0f, 0.0f, 1.0f, 0.0f, 0.0f, // bottom left
-       1.0f,  0.0f, 0.0f, 0.0f, 1.0f, 0.0f, // bottom right
-       0.0f,  1.0f, 0.0f, 0.0f, 0.0f, 1.0f, // top left
-       1.0f,  1.0f, 0.0f, 0.0f, 0.0f, 1.0f  // top right
-    };
-
-    unsigned int indices[] = {
-        0, 1, 2,
-        1, 2, 3
-    };
-
     unsigned int VAO, VBO, EBO;
 
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
-
     glBindVertexArray(VAO);
-
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_DYNAMIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*) 0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*) (3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    unsigned int variables1;
+    glGenBuffers(1, &variables1);
+    glBindBuffer(GL_UNIFORM_BUFFER, variables1);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_variables, NULL, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    unsigned int inddd = glGetUniformBlockIndex(shader.ID, "variables1");
+    glUniformBlockBinding(shader.ID, inddd, 0);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, variables1);
+
+    glBindBuffer(GL_UNIFORM_BUFFER, variables1);
+    // glBindBufferRange(GL_UNIFORM_BUFFER, 0, variables1, 0, 4 * num_variables);
+    // glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(GLfloat) * num_variables, random_colors2);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_variables, random_colors2);
+    // void *ptr = glMapBuffer(GL_UNIFORM_BUFFER, GL_WRITE_ONLY);
+    // memcpy(ptr, random_colors2, sizeof(random_colors2));
+    // glUnmapBuffer(GL_UNIFORM_BUFFER);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    // glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    // glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    // float border_color[] = {0.0f, 0.0f, 0.0f, 1.0f};
+    // glTexParameterfv(GL_TEXTURE_1D, GL_TEXTURE_BORDER_COLOR, border_color);
+    // glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    // glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    // unsigned int variables;
+    // glGenTextures(1, &variables);
+    // glBindTexture(GL_TEXTURE_1D, variables);
+    // // glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA32F, 20*20*2, 0, GL_RGBA, GL_FLOAT, random_colors2);
+    // glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA32F, 20*20*2, 0, GL_RED, GL_FLOAT, random_colors2);
+
+    // shader.use();
+    // glUniform1i(glGetUniformLocation(shader.ID, "texture1"), 0);
+
+
 
     // imgui variables
     bool show_demo_window = false;
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     // ImVec2 num_triangles_dimensions = ImVec2(1, 1);
-    int num_triangles_dimensions[2] = { 2, 2 };
-    int mode = 2;
+    int num_triangles_dimensions[2] = { 20, 20 };
+    int mode = 0;
     ImVec4 vcolor1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
     ImVec4 vcolor2 = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
     ImVec4 vcolor3 = ImVec4(0.0f, 0.0f, 1.0f, 1.0f);
@@ -250,6 +286,11 @@ int main(int, char**)
         glm::mat4 proj = glm::ortho(0.0f, 1.0f, 0.0f, 1.0f, -10.0f, 10.0f); // have a coordinate system (0, 0) bottom left and (1, 1) top right
         glUniformMatrix4fv(glGetUniformLocation(shader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
 
+        // glBindTexture(GL_TEXTURE_1D, variables);
+        // glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA32F, 10*10*2, 0, GL_RGBA, GL_FLOAT, random_colors);
+        // glActiveTexture(GL_TEXTURE0);
+        // glBindTexture(GL_TEXTURE_2D, variables);
+
         glBindVertexArray(VAO);
         // glDrawArrays(GL_TRIANGLES, 0, 3);
         glDrawElements(GL_TRIANGLES, num_vertices, GL_UNSIGNED_INT, 0);
@@ -274,6 +315,4 @@ int main(int, char**)
 
     return 0;
 }
-
-
 
