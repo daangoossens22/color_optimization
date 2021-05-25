@@ -28,8 +28,9 @@ void main()
   {
     // ---------------------------------------------------------------------
     color = colours[0];
-    float valuee = red_color[gl_PrimitiveID];
-    color = vec3(valuee, 0.0, 0.0);
+    // float valuee = red_color[gl_PrimitiveID];
+    // color = vec3(valuee, 0.0, 0.0);
+    color = vec3(red_color[gl_PrimitiveID * 3], red_color[(gl_PrimitiveID * 3) + 1], red_color[(gl_PrimitiveID * 3) + 2]);
   }
   else if (mode == bilinear_interpolation)
   {

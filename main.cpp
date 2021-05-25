@@ -30,12 +30,13 @@ static void glfw_error_callback(int error, const char* description)
 int main(int argc, const char** argv)
 {
     // load_picture(argv[1]);
-    std::string image_path = cv::samples::findFile("/home/daang/Documents/wallpaper\?2.png");
+    std::string image_path = cv::samples::findFile("lenna.png");
     cv::Mat img = cv::imread(image_path, cv::IMREAD_COLOR);
     if (img.empty())
     {
         std::cout << "error loading image: " << image_path << std::endl;
     }
+    // std::cout << img << std::endl;
 
     float random_colors[101*101*3];
     for (int i = 0; i < 101*101*3; i++)
@@ -149,7 +150,8 @@ int main(int argc, const char** argv)
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     // ImVec2 num_triangles_dimensions = ImVec2(1, 1);
-    int num_triangles_dimensions[2] = { 20, 20 };
+    int num_triangles_dimensions[2] = { 4, 4 };
+    bool square_grid = true;
     int mode = 0;
     ImVec4 vcolor1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
     ImVec4 vcolor2 = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
@@ -180,7 +182,9 @@ int main(int argc, const char** argv)
 
             ImGui::ColorEdit3("clear color", (float*)&clear_color);
 
-            ImGui::SliderInt2("# triangles width x height", num_triangles_dimensions, 1, 100);
+            ImGui::SliderInt2("# triangles width x height", num_triangles_dimensions, 1, 50);
+            ImGui::Checkbox("square grid", &square_grid);
+
 
             ImGui::Combo("mode", &mode, "constant\0bilinear\0step\0smooth step\0testing\0\0");
 
@@ -200,6 +204,7 @@ int main(int argc, const char** argv)
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
             ImGui::End();
         }
+            if (square_grid) { num_triangles_dimensions[1] = num_triangles_dimensions[0]; }
 
         // TODO change this into windows for different interpolations for the triangles (constant, linear, non-linear)
         if (show_another_window)
@@ -249,6 +254,8 @@ int main(int argc, const char** argv)
         y_max--;
         int num_vertices = x_max * y_max * 2 * 3; // 2 triangles, 3 values per triangle
         unsigned int indices[num_vertices];
+        float width_triangle_pixels = (float)img.cols / (float)x_max;
+        float height_triangle_pixels = (float)img.rows / (float)y_max;
         for (int y = 0; y < y_max; y++)
         {
             for (int x = 0; x < x_max; x++)
@@ -267,8 +274,78 @@ int main(int argc, const char** argv)
                 indices[base_index + 3] = bottom_right;
                 indices[base_index + 4] = top_left;
                 indices[base_index + 5] = top_right;
+
+                // top left = (0, 0), top right = (0, img.cols - 1), bottom left = (img.rows - 1, 0)
+                float bottom_left_x_pixels = (float)(vertices[bottom_left * 6] * img.cols);
+                float bottom_left_y_pixels = (float)img.rows - 1.0 - (float)(vertices[bottom_left * 6 + 1] * img.rows);
+                // cv::Vec3b total_1 (0.0, 0.0, 0.0);
+                // cv::Vec3b total_2 (0.0, 0.0, 0.0);
+                float total_1[3] = {0.0, 0.0, 0.0};
+                float total_2[3] = {0.0, 0.0, 0.0};
+                int count_1 = 0;
+                int count_2 = 0;
+                for (int j = 0; j < height_triangle_pixels; j++)
+                {
+                    for (int i = 0; i < width_triangle_pixels; i++)
+                    {
+                        int x2 = i + (int)bottom_left_x_pixels;
+                        int y2 = (int)bottom_left_y_pixels - j;
+                        cv::Vec3b val = img.at<cv::Vec3b>(y2, x2);
+
+                        // float ress = (-height_triangle_pixels / bottom_left_x_pixels) * (bottom_left_x_pixels + i) - bottom_left_y_pixels - (2.0 * height_triangle_pixels);
+                        // if (ress < bottom_left_y_pixels + j)
+                        float ress = (-height_triangle_pixels / width_triangle_pixels) * (float)i + height_triangle_pixels;
+                        if (ress > (float)j)
+                        {
+                            total_1[0] += val[0];
+                            total_1[1] += val[1];
+                            total_1[2] += val[2];
+                            ++count_1;
+                        }
+                        else if (ress < (float)j)
+                        {
+                            total_2[0] += val[0];
+                            total_2[1] += val[1];
+                            total_2[2] += val[2];
+                            ++count_2;
+                        }
+                        else
+                        {
+                            // total_1[0] += val[0];
+                            // total_1[1] += val[1];
+                            // total_1[2] += val[2];
+                            // ++count_1;
+                            total_2[0] += val[0];
+                            total_2[1] += val[1];
+                            total_2[2] += val[2];
+                            ++count_2;
+                        }
+                    }
+                }
+                // std::cout << total_1 << "\t";
+                total_1[0] /= (count_1 * 255.0);
+                total_1[1] /= (count_1 * 255.0);
+                total_1[2] /= (count_1 * 255.0);
+                total_2[0] /= (count_2 * 255.0);
+                total_2[1] /= (count_2 * 255.0);
+                total_2[2] /= (count_2 * 255.0);
+                // std::cout << total_1 << "\t" << count_1 << "\n";
+
+                int basee = (x + (y * x_max)) * 6;
+                random_colors2[basee + 0] = total_1[2];
+                random_colors2[basee + 1] = total_1[1];
+                random_colors2[basee + 2] = total_1[0];
+                random_colors2[basee + 3] = total_2[2];
+                random_colors2[basee + 4] = total_1[1];
+                random_colors2[basee + 5] = total_1[0];
+                
+                // cv::Vec3b reccc = img.at<cv::Vec3b>(0, img.cols - 1);
             }
         }
+
+        glBindBuffer(GL_UNIFORM_BUFFER, variables1);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_variables, random_colors2);
+        glBindBuffer(GL_UNIFORM_BUFFER, 0);
         
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
