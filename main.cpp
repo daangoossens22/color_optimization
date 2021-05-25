@@ -31,6 +31,7 @@ int main(int argc, const char** argv)
 {
     // load_picture(argv[1]);
     std::string image_path = cv::samples::findFile("lenna.png");
+    // std::string image_path = cv::samples::findFile("test2.png");
     cv::Mat img = cv::imread(image_path, cv::IMREAD_COLOR);
     if (img.empty())
     {
@@ -150,7 +151,7 @@ int main(int argc, const char** argv)
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     // ImVec2 num_triangles_dimensions = ImVec2(1, 1);
-    int num_triangles_dimensions[2] = { 4, 4 };
+    int num_triangles_dimensions[2] = { 1, 1 };
     bool square_grid = true;
     int mode = 0;
     ImVec4 vcolor1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
@@ -278,31 +279,31 @@ int main(int argc, const char** argv)
                 // top left = (0, 0), top right = (0, img.cols - 1), bottom left = (img.rows - 1, 0)
                 float bottom_left_x_pixels = (float)(vertices[bottom_left * 6] * img.cols);
                 float bottom_left_y_pixels = (float)img.rows - 1.0 - (float)(vertices[bottom_left * 6 + 1] * img.rows);
-                // cv::Vec3b total_1 (0.0, 0.0, 0.0);
-                // cv::Vec3b total_2 (0.0, 0.0, 0.0);
                 float total_1[3] = {0.0, 0.0, 0.0};
                 float total_2[3] = {0.0, 0.0, 0.0};
+                int points_tested_per_side = 20;
+                float diff_x_pixels = width_triangle_pixels / points_tested_per_side;
+                float diff_y_pixels = height_triangle_pixels / points_tested_per_side;
                 int count_1 = 0;
                 int count_2 = 0;
-                for (int j = 0; j < height_triangle_pixels; j++)
+                for (int j = 0; j < points_tested_per_side; j++)
                 {
-                    for (int i = 0; i < width_triangle_pixels; i++)
+                    for (int i = 0; i < points_tested_per_side; i++)
                     {
-                        int x2 = i + (int)bottom_left_x_pixels;
-                        int y2 = (int)bottom_left_y_pixels - j;
+                        int x2 = std::floor((i * diff_x_pixels) + bottom_left_x_pixels);
+                        int y2 = std::ceil(bottom_left_y_pixels - (j * diff_y_pixels));
                         cv::Vec3b val = img.at<cv::Vec3b>(y2, x2);
 
-                        // float ress = (-height_triangle_pixels / bottom_left_x_pixels) * (bottom_left_x_pixels + i) - bottom_left_y_pixels - (2.0 * height_triangle_pixels);
-                        // if (ress < bottom_left_y_pixels + j)
-                        float ress = (-height_triangle_pixels / width_triangle_pixels) * (float)i + height_triangle_pixels;
-                        if (ress > (float)j)
+                        //float ress = (-height_triangle_pixels / width_triangle_pixels) * (float)i + height_triangle_pixels;
+                        int vall = i + j + 1;
+                        if (vall < points_tested_per_side)
                         {
                             total_1[0] += val[0];
                             total_1[1] += val[1];
                             total_1[2] += val[2];
                             ++count_1;
                         }
-                        else if (ress < (float)j)
+                        else if (vall > points_tested_per_side)
                         {
                             total_2[0] += val[0];
                             total_2[1] += val[1];
@@ -311,10 +312,10 @@ int main(int argc, const char** argv)
                         }
                         else
                         {
-                            // total_1[0] += val[0];
-                            // total_1[1] += val[1];
-                            // total_1[2] += val[2];
-                            // ++count_1;
+                            total_1[0] += val[0];
+                            total_1[1] += val[1];
+                            total_1[2] += val[2];
+                            ++count_1;
                             total_2[0] += val[0];
                             total_2[1] += val[1];
                             total_2[2] += val[2];
@@ -336,8 +337,8 @@ int main(int argc, const char** argv)
                 random_colors2[basee + 1] = total_1[1];
                 random_colors2[basee + 2] = total_1[0];
                 random_colors2[basee + 3] = total_2[2];
-                random_colors2[basee + 4] = total_1[1];
-                random_colors2[basee + 5] = total_1[0];
+                random_colors2[basee + 4] = total_2[1];
+                random_colors2[basee + 5] = total_2[0];
                 
                 // cv::Vec3b reccc = img.at<cv::Vec3b>(0, img.cols - 1);
             }
