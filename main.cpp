@@ -17,90 +17,27 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+constexpr int max_triangles_per_side = 100;
 
-static void glfw_error_callback(int error, const char* description)
-{
-    fprintf(stderr, "Glfw Error %d: %s\n", error, description);
-}
+static void glfw_error_callback(int error, const char* description);
+void load_picture(cv::Mat& img, const std::string file_name);
+GLFWwindow* glfw_setup();
 
-// void load_picture(std::string file_name)
-// {
-// }
 
 int main(int argc, const char** argv)
 {
-    // load_picture(argv[1]);
-    std::string image_path = cv::samples::findFile("lenna.png");
-    // std::string image_path = cv::samples::findFile("test2.png");
-    cv::Mat img = cv::imread(image_path, cv::IMREAD_COLOR);
-    if (img.empty())
-    {
-        std::cout << "error loading image: " << image_path << std::endl;
-    }
-    // std::cout << img << std::endl;
+    // load image into opencv buffer
+    cv::Mat img;
+    load_picture(img, "lenna.png");
 
-    float random_colors[101*101*3];
-    for (int i = 0; i < 101*101*3; i++)
-    {
-        random_colors[i] = (float)std::rand() / (RAND_MAX + 1.0f);
-    }
-    int num_variables = 100 * 100 * 2;
-    float random_colors2[num_variables];
-    for (int i = 0; i < num_variables; i++)
-    {
-        random_colors2[i] = (float) i / (float) num_variables;
-    }
+    GLFWwindow* window = glfw_setup();
+    if (!window) { return 1; };
 
-    // Setup window
-    glfwSetErrorCallback(glfw_error_callback);
-    if (!glfwInit())
-        return 1;
-
-    // GL 3.3 + GLSL 330
-    const char* glsl_version = "#version 330";
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE);
-    //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
-
-    // Create window with graphics context
-    // GLFWwindow* window = glfwCreateWindow(900, 900, "Test", NULL, NULL);
-    GLFWwindow* window = glfwCreateWindow(1600, 900, "Test", NULL, NULL);
-    if (window == NULL)
-    {
-        glfwTerminate();
-        return 1;
-    }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1); // Enable vsync
-
-    // Initialize OpenGL loader
-    bool err = gladLoadGL(glfwGetProcAddress) == 0; // glad2 recommend using the windowing library loader instead of the (optionally) bundled one.
-    if (err)
-    {
-        fprintf(stderr, "Failed to initialize OpenGL loader!\n");
-        return 1;
-    }
-
-    // Setup Dear ImGui context
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-
-    // Setup Dear ImGui style
-    ImGui::StyleColorsDark();
-    //ImGui::StyleColorsClassic();
-
-    // Setup Platform/Renderer backends
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glsl_version);
-
-    // ---------------------------------------------------
     Shader shader ("vertex.shader", "geometry.shader", "fragment.shader");
+    int num_variables = max_triangles_per_side * max_triangles_per_side * 2 * 3;
     
-    // ---------------------------------------------------
+    // -----------------------------------------------------------------------------
+    // generate opengl buffers
     unsigned int VAO, VBO, EBO;
 
     glGenVertexArrays(1, &VAO);
@@ -119,38 +56,10 @@ int main(int argc, const char** argv)
     glUniformBlockBinding(shader.ID, inddd, 0);
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, variables1);
 
-    glBindBuffer(GL_UNIFORM_BUFFER, variables1);
-    // glBindBufferRange(GL_UNIFORM_BUFFER, 0, variables1, 0, 4 * num_variables);
-    // glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(GLfloat) * num_variables, random_colors2);
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_variables, random_colors2);
-    // void *ptr = glMapBuffer(GL_UNIFORM_BUFFER, GL_WRITE_ONLY);
-    // memcpy(ptr, random_colors2, sizeof(random_colors2));
-    // glUnmapBuffer(GL_UNIFORM_BUFFER);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
-    // glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-    // glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    // float border_color[] = {0.0f, 0.0f, 0.0f, 1.0f};
-    // glTexParameterfv(GL_TEXTURE_1D, GL_TEXTURE_BORDER_COLOR, border_color);
-    // glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    // glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    // unsigned int variables;
-    // glGenTextures(1, &variables);
-    // glBindTexture(GL_TEXTURE_1D, variables);
-    // // glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA32F, 20*20*2, 0, GL_RGBA, GL_FLOAT, random_colors2);
-    // glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA32F, 20*20*2, 0, GL_RED, GL_FLOAT, random_colors2);
-
-    // shader.use();
-    // glUniform1i(glGetUniformLocation(shader.ID, "texture1"), 0);
-
-
-
+    // -----------------------------------------------------------------------------
     // imgui variables
     bool show_demo_window = false;
-    bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    // ImVec2 num_triangles_dimensions = ImVec2(1, 1);
     int num_triangles_dimensions[2] = { 1, 1 };
     bool square_grid = true;
     int mode = 0;
@@ -162,28 +71,30 @@ int main(int argc, const char** argv)
     float weightz = 0.0f;
     float weightw = 0.0f;
 
+    // make an array for the vertex and triangle colors that can later be loaded into an opengl buffer
+    float vertex_colors[max_triangles_per_side * max_triangles_per_side * 3];
+    float triangle_colors[num_variables];
 
     // Main loop
     while (!glfwWindowShouldClose(window))
     {
         // Poll and handle events (inputs, window resize, etc.)
         glfwPollEvents();
-
-        // Start the Dear ImGui frame
+        
+        // -----------------------------------------------------------------------------
+        // dear imgui windows
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-
         {
             ImGui::Begin("Main window");
             // ImGui::Text("This is some useful text.");
 
             ImGui::Checkbox("Demo Window", &show_demo_window);
-            ImGui::Checkbox("Another Window", &show_another_window);
 
             ImGui::ColorEdit3("clear color", (float*)&clear_color);
 
-            ImGui::SliderInt2("# triangles width x height", num_triangles_dimensions, 1, 50);
+            ImGui::SliderInt2("# triangles width x height", num_triangles_dimensions, 1, max_triangles_per_side);
             ImGui::Checkbox("square grid", &square_grid);
 
 
@@ -197,27 +108,15 @@ int main(int argc, const char** argv)
             ImGui::SliderFloat("float 3", &weightz, -1.0f, 1.0f);
             ImGui::SliderFloat("float 4", &weightw, -1.0f, 1.0f);
 
-            // if (ImGui::Button("Button"))
-            //     counter++;
-            // ImGui::SameLine();
-            // ImGui::Text("counter = %d", counter);
-
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
             ImGui::End();
         }
-            if (square_grid) { num_triangles_dimensions[1] = num_triangles_dimensions[0]; }
-
-        // TODO change this into windows for different interpolations for the triangles (constant, linear, non-linear)
-        if (show_another_window)
-        {
-            ImGui::Begin("Another Window", &show_another_window);
-            ImGui::End();
-        }
-        // demo window that displays most functionality
-        if (show_demo_window)
-            ImGui::ShowDemoWindow(&show_demo_window);
+        if (square_grid) { num_triangles_dimensions[1] = num_triangles_dimensions[0]; }
+        // demo window that displays most dear imgui functionality
+        if (show_demo_window) { ImGui::ShowDemoWindow(&show_demo_window); }
 
 
+        // -----------------------------------------------------------------------------
         // Rendering
         ImGui::Render();
         int display_w, display_h;
@@ -225,7 +124,6 @@ int main(int argc, const char** argv)
         glViewport(display_w - display_h, 0, display_h, display_h); // have a square viewport where the imgui stuff can be on the left
         glClearColor(clear_color.x, clear_color.y, clear_color.z, 1.0);
         glClear(GL_COLOR_BUFFER_BIT);
-
 
         shader.use();
 
@@ -235,6 +133,7 @@ int main(int argc, const char** argv)
         float x_step = 1.0f / ((float)x_max - 1.0f);
         float y_step = 1.0f / ((float)y_max - 1.0f);
         
+        // set vertices buffer (vertices + color)
         float vertices[x_max * y_max * 6]; // 6 elements per vertex
         for (int y = 0; y < y_max; y++)
         {
@@ -245,12 +144,13 @@ int main(int argc, const char** argv)
                 vertices[base_index + 1] = y * y_step;
                 vertices[base_index + 2] = 0.0f;
                 // random colors
-                vertices[base_index + 3] = random_colors[base_index / 2];
-                vertices[base_index + 4] = random_colors[base_index / 2 + 1];
-                vertices[base_index + 5] = random_colors[base_index / 2 + 2];
+                vertices[base_index + 3] = vertex_colors[base_index / 2];
+                vertices[base_index + 4] = vertex_colors[base_index / 2 + 1];
+                vertices[base_index + 5] = vertex_colors[base_index / 2 + 2];
             }
         }
 
+        // set index buffer (array of the vertices that form a triangle)
         x_max--;
         y_max--;
         int num_vertices = x_max * y_max * 2 * 3; // 2 triangles, 3 values per triangle
@@ -333,19 +233,20 @@ int main(int argc, const char** argv)
                 // std::cout << total_1 << "\t" << count_1 << "\n";
 
                 int basee = (x + (y * x_max)) * 6;
-                random_colors2[basee + 0] = total_1[2];
-                random_colors2[basee + 1] = total_1[1];
-                random_colors2[basee + 2] = total_1[0];
-                random_colors2[basee + 3] = total_2[2];
-                random_colors2[basee + 4] = total_2[1];
-                random_colors2[basee + 5] = total_2[0];
+                triangle_colors[basee + 0] = total_1[2];
+                triangle_colors[basee + 1] = total_1[1];
+                triangle_colors[basee + 2] = total_1[0];
+                triangle_colors[basee + 3] = total_2[2];
+                triangle_colors[basee + 4] = total_2[1];
+                triangle_colors[basee + 5] = total_2[0];
                 
                 // cv::Vec3b reccc = img.at<cv::Vec3b>(0, img.cols - 1);
             }
         }
 
+        // put all the buffers on the gpu
         glBindBuffer(GL_UNIFORM_BUFFER, variables1);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_variables, random_colors2);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_variables, triangle_colors);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
         
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
@@ -359,26 +260,18 @@ int main(int argc, const char** argv)
 
         glUniform4f(glGetUniformLocation(shader.ID, "weight"), weightx, weighty, weightz, weightw);
         glUniform1i(glGetUniformLocation(shader.ID, "mode"), mode);
-        // glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)display_w / (float)display_h, 0.1f, 100.0f);
-        // glm::mat4 proj = glm::ortho((-(float)display_w / (float)display_h) + 1.0f, 1.0f, 0.0f, 1.0f, -10.0f, 10.0f);
         glm::mat4 proj = glm::ortho(0.0f, 1.0f, 0.0f, 1.0f, -10.0f, 10.0f); // have a coordinate system (0, 0) bottom left and (1, 1) top right
         glUniformMatrix4fv(glGetUniformLocation(shader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
 
-        // glBindTexture(GL_TEXTURE_1D, variables);
-        // glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA32F, 10*10*2, 0, GL_RGBA, GL_FLOAT, random_colors);
-        // glActiveTexture(GL_TEXTURE0);
-        // glBindTexture(GL_TEXTURE_2D, variables);
-
         glBindVertexArray(VAO);
-        // glDrawArrays(GL_TRIANGLES, 0, 3);
         glDrawElements(GL_TRIANGLES, num_vertices, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
-        // glfwPollEvents();
     }
 
+    // -----------------------------------------------------------------------------
     // Cleanup
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -394,3 +287,71 @@ int main(int argc, const char** argv)
     return 0;
 }
 
+
+
+static void glfw_error_callback(int error, const char* description)
+{
+    fprintf(stderr, "Glfw Error %d: %s\n", error, description);
+}
+
+void load_picture(cv::Mat& img, const std::string file_name)
+{
+    std::string image_path = cv::samples::findFile(file_name);
+    img = cv::imread(image_path, cv::IMREAD_COLOR);
+    if (img.empty())
+    {
+        std::cout << "error loading image: " << image_path << std::endl;
+    }
+    // std::cout << img << std::endl;
+}
+
+GLFWwindow* glfw_setup()
+{
+    // Setup window
+    glfwSetErrorCallback(glfw_error_callback);
+    if (!glfwInit())
+        return 0;
+
+    // GL 3.3 + GLSL 330
+    const char* glsl_version = "#version 330";
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE);
+    //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
+
+    // Create window with graphics context
+    // GLFWwindow* window = glfwCreateWindow(900, 900, "Test", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1600, 900, "Test", NULL, NULL);
+    if (window == NULL)
+    {
+        glfwTerminate();
+        return 0;
+    }
+    glfwMakeContextCurrent(window);
+    glfwSwapInterval(1); // Enable vsync
+
+    // Initialize OpenGL loader
+    bool err = gladLoadGL(glfwGetProcAddress) == 0; // glad2 recommend using the windowing library loader instead of the (optionally) bundled one.
+    if (err)
+    {
+        fprintf(stderr, "Failed to initialize OpenGL loader!\n");
+        return 0;
+    }
+
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+    //ImGui::StyleColorsClassic();
+
+    // Setup Platform/Renderer backends
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init(glsl_version);
+
+    return window;
+}
