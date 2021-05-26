@@ -14,7 +14,7 @@ const int step_smooth = 3;
 const int triangles_per_side = 73;
 
 uniform variables1 {
-  float triangle_colors[triangles_per_side * triangles_per_side * 3];
+  float triangle_colors[triangles_per_side * triangles_per_side * 2 * 3];
 };
 // layout (std140) uniform variables1 {
 // uniform variables1 {

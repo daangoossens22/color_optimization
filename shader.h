@@ -27,9 +27,21 @@ class Shader
             glGetShaderiv(ID, GL_LINK_STATUS, &success);
             if (!success)
             {
+                // GLint length = 0;
+                // glGetShaderiv(ID, GL_INFO_LOG_LENGTH, &length);
+                // std::cout << "length: " << length << std::endl;
                 glGetShaderInfoLog(ID, 512, NULL, infoLog);
                 std::cout << "Linking shaders failed\n" << infoLog << std::endl;
             }
+
+            // glValidateProgram(ID);
+            // glGetShaderiv(ID, GL_VALIDATE_STATUS, &success);
+            // if (!success)
+            // {
+            //     glGetShaderInfoLog(ID, 512, NULL, infoLog);
+            //     std::cout << "Validating shaders failed\n" << infoLog << std::endl;
+            // }
+
         
             glDeleteShader(vertexShader);
             glDeleteShader(geometryShader);
