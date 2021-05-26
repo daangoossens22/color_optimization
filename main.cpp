@@ -22,6 +22,9 @@ constexpr int max_triangles_per_side = 73;
 static void glfw_error_callback(int error, const char* description);
 void load_picture(cv::Mat& img, const std::string file_name);
 GLFWwindow* glfw_setup();
+void update_vertex_buffer(int num_triangles_x, int num_triangles_y, float vertices[], const float vertex_colors[]);
+void update_index_buffer(int num_triangles_x, int num_triangles_y, unsigned int indices[]);
+void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const float vertices[], float triangle_colors[]);
 
 
 int main(int argc, const char** argv)
@@ -34,7 +37,7 @@ int main(int argc, const char** argv)
     if (!window) { return 1; };
 
     Shader shader ("vertex.shader", "geometry.shader", "fragment.shader");
-    int num_variables = max_triangles_per_side * max_triangles_per_side * 2 * 3;
+    int num_triangles = max_triangles_per_side * max_triangles_per_side * 2 * 3;
     
     // -----------------------------------------------------------------------------
     // generate opengl buffers
@@ -49,7 +52,7 @@ int main(int argc, const char** argv)
     unsigned int variables1;
     glGenBuffers(1, &variables1);
     glBindBuffer(GL_UNIFORM_BUFFER, variables1);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_variables, NULL, GL_DYNAMIC_DRAW);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
     unsigned int inddd = glGetUniformBlockIndex(shader.ID, "variables1");
@@ -71,9 +74,12 @@ int main(int argc, const char** argv)
     float weightz = 0.0f;
     float weightw = 0.0f;
 
+    int old_mode = -1;
+    int old_num_triangles_dimensions[2] = { 0, 0};
+
     // make an array for the vertex and triangle colors that can later be loaded into an opengl buffer
     float vertex_colors[max_triangles_per_side * max_triangles_per_side * 3];
-    float triangle_colors[num_variables];
+    float triangle_colors[num_triangles];
 
     // Main loop
     while (!glfwWindowShouldClose(window))
@@ -117,7 +123,7 @@ int main(int argc, const char** argv)
 
 
         // -----------------------------------------------------------------------------
-        // Rendering
+        // Clear values and set opengl viewport
         ImGui::Render();
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
@@ -127,126 +133,37 @@ int main(int argc, const char** argv)
 
         shader.use();
 
-        // set/update shader parameters
-        int x_max = num_triangles_dimensions[0] + 1;
-        int y_max = num_triangles_dimensions[1] + 1;
-        float x_step = 1.0f / ((float)x_max - 1.0f);
-        float y_step = 1.0f / ((float)y_max - 1.0f);
-        
-        // set vertices buffer (vertices + color)
-        float vertices[x_max * y_max * 6]; // 6 elements per vertex
-        for (int y = 0; y < y_max; y++)
-        {
-            for (int x = 0; x < x_max; x++)
-            {
-                int base_index = (x + y * x_max) * 6;
-                vertices[base_index + 0] = x * x_step;
-                vertices[base_index + 1] = y * y_step;
-                vertices[base_index + 2] = 0.0f;
-                // random colors
-                vertices[base_index + 3] = vertex_colors[base_index / 2];
-                vertices[base_index + 4] = vertex_colors[base_index / 2 + 1];
-                vertices[base_index + 5] = vertex_colors[base_index / 2 + 2];
-            }
-        }
+        // -----------------------------------------------------------------------------
+        // update vertex and index buffers
+        float vertices[(num_triangles_dimensions[0] + 1) * (num_triangles_dimensions[1] + 1) * 6]; // 6 elements per vertex
+        update_vertex_buffer(num_triangles_dimensions[0], num_triangles_dimensions[1], vertices, vertex_colors);
 
-        // set index buffer (array of the vertices that form a triangle)
-        x_max--;
-        y_max--;
-        int num_vertices = x_max * y_max * 2 * 3; // 2 triangles, 3 values per triangle
+        int num_vertices = num_triangles_dimensions[0] * num_triangles_dimensions[1] * 2 * 3; // 2 triangles, 3 values per triangle
         unsigned int indices[num_vertices];
-        float width_triangle_pixels = (float)img.cols / (float)x_max;
-        float height_triangle_pixels = (float)img.rows / (float)y_max;
-        for (int y = 0; y < y_max; y++)
+        update_index_buffer(num_triangles_dimensions[0], num_triangles_dimensions[1], indices);
+
+        // -----------------------------------------------------------------------------
+        // update triangle coloring variables (only when something changed and recalculation is needed)
+        if (!(mode == old_mode && num_triangles_dimensions[0] == old_num_triangles_dimensions[0] && num_triangles_dimensions[1] == old_num_triangles_dimensions[1]))
         {
-            for (int x = 0; x < x_max; x++)
+            old_mode = mode;
+            old_num_triangles_dimensions[0] = num_triangles_dimensions[0];
+            old_num_triangles_dimensions[1] = num_triangles_dimensions[1];
+
+            switch (mode)
             {
-                unsigned int bottom_left = (x_max + 1) * y + x;
-                unsigned int bottom_right = (x_max + 1) * y + x + 1;
-                unsigned int top_left = (x_max + 1) * (y + 1) + x;
-                unsigned int top_right = (x_max + 1) * (y + 1) + x + 1;
-
-                int base_index = 2 * 3 * (x + y * x_max);
-                // triangle 1
-                indices[base_index + 0] = bottom_left;
-                indices[base_index + 1] = bottom_right;
-                indices[base_index + 2] = top_left;
-                // triangle 2
-                indices[base_index + 3] = bottom_right;
-                indices[base_index + 4] = top_left;
-                indices[base_index + 5] = top_right;
-
-                // top left = (0, 0), top right = (0, img.cols - 1), bottom left = (img.rows - 1, 0)
-                float bottom_left_x_pixels = (float)(vertices[bottom_left * 6] * img.cols);
-                float bottom_left_y_pixels = (float)img.rows - 1.0 - (float)(vertices[bottom_left * 6 + 1] * img.rows);
-                float total_1[3] = {0.0, 0.0, 0.0};
-                float total_2[3] = {0.0, 0.0, 0.0};
-                int points_tested_per_side = 20;
-                float diff_x_pixels = width_triangle_pixels / points_tested_per_side;
-                float diff_y_pixels = height_triangle_pixels / points_tested_per_side;
-                int count_1 = 0;
-                int count_2 = 0;
-                for (int j = 0; j < points_tested_per_side; j++)
-                {
-                    for (int i = 0; i < points_tested_per_side; i++)
-                    {
-                        int x2 = std::floor((i * diff_x_pixels) + bottom_left_x_pixels);
-                        int y2 = std::ceil(bottom_left_y_pixels - (j * diff_y_pixels));
-                        cv::Vec3b val = img.at<cv::Vec3b>(y2, x2);
-
-                        //float ress = (-height_triangle_pixels / width_triangle_pixels) * (float)i + height_triangle_pixels;
-                        int vall = i + j + 1;
-                        if (vall < points_tested_per_side)
-                        {
-                            total_1[0] += val[0];
-                            total_1[1] += val[1];
-                            total_1[2] += val[2];
-                            ++count_1;
-                        }
-                        else if (vall > points_tested_per_side)
-                        {
-                            total_2[0] += val[0];
-                            total_2[1] += val[1];
-                            total_2[2] += val[2];
-                            ++count_2;
-                        }
-                        else
-                        {
-                            total_1[0] += val[0];
-                            total_1[1] += val[1];
-                            total_1[2] += val[2];
-                            ++count_1;
-                            total_2[0] += val[0];
-                            total_2[1] += val[1];
-                            total_2[2] += val[2];
-                            ++count_2;
-                        }
-                    }
-                }
-                // std::cout << total_1 << "\t";
-                total_1[0] /= (count_1 * 255.0);
-                total_1[1] /= (count_1 * 255.0);
-                total_1[2] /= (count_1 * 255.0);
-                total_2[0] /= (count_2 * 255.0);
-                total_2[1] /= (count_2 * 255.0);
-                total_2[2] /= (count_2 * 255.0);
-                // std::cout << total_1 << "\t" << count_1 << "\n";
-
-                int basee = (x + (y * x_max)) * 6;
-                triangle_colors[basee + 0] = total_1[2];
-                triangle_colors[basee + 1] = total_1[1];
-                triangle_colors[basee + 2] = total_1[0];
-                triangle_colors[basee + 3] = total_2[2];
-                triangle_colors[basee + 4] = total_2[1];
-                triangle_colors[basee + 5] = total_2[0];
-                
-                // cv::Vec3b reccc = img.at<cv::Vec3b>(0, img.cols - 1);
+                case 0:
+                    update_constant_colors(num_triangles_dimensions[0], num_triangles_dimensions[1], img, vertices, triangle_colors);
+                    break;
+                case 1:
+                    break;
             }
         }
 
+        // -----------------------------------------------------------------------------
         // put all the buffers on the gpu
         glBindBuffer(GL_UNIFORM_BUFFER, variables1);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_variables, triangle_colors);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
         
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
@@ -287,7 +204,138 @@ int main(int argc, const char** argv)
     return 0;
 }
 
+void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const float vertices[], float triangle_colors[])
+{
+    int x_max = num_triangles_x;
+    int y_max = num_triangles_y;
+    float width_triangle_pixels = (float)img.cols / (float)x_max;
+    float height_triangle_pixels = (float)img.rows / (float)y_max;
 
+    for (int y = 0; y < y_max; y++)
+    {
+        for (int x = 0; x < x_max; x++)
+        {
+            unsigned int bottom_left = (x_max + 1) * y + x;
+
+            // top left = (0, 0), top right = (0, img.cols - 1), bottom left = (img.rows - 1, 0)
+            float bottom_left_x_pixels = (float)(vertices[bottom_left * 6] * img.cols);
+            float bottom_left_y_pixels = (float)img.rows - 1.0 - (float)(vertices[bottom_left * 6 + 1] * img.rows);
+            float total_1[3] = {0.0, 0.0, 0.0};
+            float total_2[3] = {0.0, 0.0, 0.0};
+            int points_tested_per_side = 20;
+            float diff_x_pixels = width_triangle_pixels / points_tested_per_side;
+            float diff_y_pixels = height_triangle_pixels / points_tested_per_side;
+            int count_1 = 0;
+            int count_2 = 0;
+            for (int j = 0; j < points_tested_per_side; j++)
+            {
+                for (int i = 0; i < points_tested_per_side; i++)
+                {
+                    int x2 = std::floor((i * diff_x_pixels) + bottom_left_x_pixels);
+                    int y2 = std::ceil(bottom_left_y_pixels - (j * diff_y_pixels));
+                    cv::Vec3b val = img.at<cv::Vec3b>(y2, x2);
+
+                    //float ress = (-height_triangle_pixels / width_triangle_pixels) * (float)i + height_triangle_pixels;
+                    int vall = i + j + 1;
+                    if (vall < points_tested_per_side)
+                    {
+                        total_1[0] += val[0];
+                        total_1[1] += val[1];
+                        total_1[2] += val[2];
+                        ++count_1;
+                    }
+                    else if (vall > points_tested_per_side)
+                    {
+                        total_2[0] += val[0];
+                        total_2[1] += val[1];
+                        total_2[2] += val[2];
+                        ++count_2;
+                    }
+                    else
+                    {
+                        total_1[0] += val[0];
+                        total_1[1] += val[1];
+                        total_1[2] += val[2];
+                        ++count_1;
+                        total_2[0] += val[0];
+                        total_2[1] += val[1];
+                        total_2[2] += val[2];
+                        ++count_2;
+                    }
+                }
+            }
+            // std::cout << total_1 << "\t";
+            total_1[0] /= (count_1 * 255.0);
+            total_1[1] /= (count_1 * 255.0);
+            total_1[2] /= (count_1 * 255.0);
+            total_2[0] /= (count_2 * 255.0);
+            total_2[1] /= (count_2 * 255.0);
+            total_2[2] /= (count_2 * 255.0);
+            // std::cout << total_1 << "\t" << count_1 << "\n";
+
+            int basee = (x + (y * x_max)) * 6;
+            triangle_colors[basee + 0] = total_1[2];
+            triangle_colors[basee + 1] = total_1[1];
+            triangle_colors[basee + 2] = total_1[0];
+            triangle_colors[basee + 3] = total_2[2];
+            triangle_colors[basee + 4] = total_2[1];
+            triangle_colors[basee + 5] = total_2[0];
+            
+            // cv::Vec3b reccc = img.at<cv::Vec3b>(0, img.cols - 1);
+        }
+    }
+}
+void update_vertex_buffer(int num_triangles_x, int num_triangles_y, float vertices[], const float vertex_colors[])
+{
+    // set/update shader parameters
+    int x_max = num_triangles_x + 1;
+    int y_max = num_triangles_y + 1;
+    float x_step = 1.0f / ((float)x_max - 1.0f);
+    float y_step = 1.0f / ((float)y_max - 1.0f);
+    
+    // set vertices buffer (vertices + color)
+    for (int y = 0; y < y_max; y++)
+    {
+        for (int x = 0; x < x_max; x++)
+        {
+            int base_index = (x + y * x_max) * 6;
+            vertices[base_index + 0] = x * x_step;
+            vertices[base_index + 1] = y * y_step;
+            vertices[base_index + 2] = 0.0f;
+            // random colors
+            vertices[base_index + 3] = vertex_colors[base_index / 2];
+            vertices[base_index + 4] = vertex_colors[base_index / 2 + 1];
+            vertices[base_index + 5] = vertex_colors[base_index / 2 + 2];
+        }
+    }
+}
+
+void update_index_buffer(int num_triangles_x, int num_triangles_y, unsigned int indices[])
+{
+    // set index buffer (array of the vertices that form a triangle)
+    int x_max = num_triangles_x;
+    int y_max = num_triangles_y;
+    for (int y = 0; y < y_max; y++)
+    {
+        for (int x = 0; x < x_max; x++)
+        {
+            unsigned int bottom_left = (x_max + 1) * y + x;
+            unsigned int bottom_right = (x_max + 1) * y + x + 1;
+            unsigned int top_left = (x_max + 1) * (y + 1) + x;
+            unsigned int top_right = (x_max + 1) * (y + 1) + x + 1;
+
+            int base_index = 2 * 3 * (x + y * x_max);
+            // triangle 1
+            indices[base_index + 0] = bottom_left;
+            indices[base_index + 1] = bottom_right;
+            indices[base_index + 2] = top_left;
+            // triangle 2
+            indices[base_index + 3] = bottom_right;
+            indices[base_index + 4] = top_left;
+            indices[base_index + 5] = top_right;
+        }
+    }
+}
 
 static void glfw_error_callback(int error, const char* description)
 {
