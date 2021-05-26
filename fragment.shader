@@ -11,8 +11,10 @@ const int bilinear_interpolation = 1;
 const int step_cutoff = 2;
 const int step_smooth = 3;
 
+const int triangles_per_side = 73;
+
 uniform variables1 {
-  float triangle_colors[100*100*3];
+  float triangle_colors[triangles_per_side * triangles_per_side * 3];
 };
 // layout (std140) uniform variables1 {
 // uniform variables1 {
