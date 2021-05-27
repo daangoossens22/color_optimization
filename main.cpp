@@ -9,6 +9,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/saliency.hpp>
+#include <opencv2/highgui.hpp>
 
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
@@ -18,20 +19,23 @@
 #include <glm/gtc/type_ptr.hpp>
 
 constexpr int max_triangles_per_side = 73;
+constexpr int saliency_bias = 0.001;
 
 static void glfw_error_callback(int error, const char* description);
-void load_picture(cv::Mat& img, const std::string file_name);
+void load_picture(cv::Mat& img, cv::Mat& saliency_map, const std::string file_name);
 GLFWwindow* glfw_setup();
 void update_vertex_buffer(int num_triangles_x, int num_triangles_y, float vertices[], const float vertex_colors[]);
 void update_index_buffer(int num_triangles_x, int num_triangles_y, unsigned int indices[]);
-void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const float vertices[], float triangle_colors[]);
+void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float triangle_colors[]);
 
 
 int main(int argc, const char** argv)
 {
     // load image into opencv buffer
     cv::Mat img;
-    load_picture(img, "lenna.png");
+    cv::Mat saliency_map;
+    load_picture(img, saliency_map, "lenna.png");
+    // load_picture(img, saliency_map, "test2.png");
 
     GLFWwindow* window = glfw_setup();
     if (!window) { return 1; };
@@ -65,6 +69,7 @@ int main(int argc, const char** argv)
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     int num_triangles_dimensions[2] = { 1, 1 };
     bool square_grid = true;
+    bool use_saliency = true;
     int mode = 0;
     ImVec4 vcolor1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
     ImVec4 vcolor2 = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
@@ -76,6 +81,7 @@ int main(int argc, const char** argv)
 
     int old_mode = -1;
     int old_num_triangles_dimensions[2] = { 0, 0};
+    bool old_use_saliency = false;
 
     // make an array for the vertex and triangle colors that can later be loaded into an opengl buffer
     float vertex_colors[max_triangles_per_side * max_triangles_per_side * 3];
@@ -102,6 +108,7 @@ int main(int argc, const char** argv)
 
             ImGui::SliderInt2("# triangles width x height", num_triangles_dimensions, 1, max_triangles_per_side);
             ImGui::Checkbox("square grid", &square_grid);
+            ImGui::Checkbox("use saliency", &use_saliency);
 
 
             ImGui::Combo("mode", &mode, "constant\0bilinear\0step\0smooth step\0testing\0\0");
@@ -144,16 +151,17 @@ int main(int argc, const char** argv)
 
         // -----------------------------------------------------------------------------
         // update triangle coloring variables (only when something changed and recalculation is needed)
-        if (!(mode == old_mode && num_triangles_dimensions[0] == old_num_triangles_dimensions[0] && num_triangles_dimensions[1] == old_num_triangles_dimensions[1]))
+        if (!(mode == old_mode && num_triangles_dimensions[0] == old_num_triangles_dimensions[0] && num_triangles_dimensions[1] == old_num_triangles_dimensions[1] && use_saliency == old_use_saliency))
         {
             old_mode = mode;
             old_num_triangles_dimensions[0] = num_triangles_dimensions[0];
             old_num_triangles_dimensions[1] = num_triangles_dimensions[1];
+            old_use_saliency = use_saliency;
 
             switch (mode)
             {
                 case 0:
-                    update_constant_colors(num_triangles_dimensions[0], num_triangles_dimensions[1], img, vertices, triangle_colors);
+                    update_constant_colors(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, triangle_colors);
                     break;
                 case 1:
                     break;
@@ -204,7 +212,7 @@ int main(int argc, const char** argv)
     return 0;
 }
 
-void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const float vertices[], float triangle_colors[])
+void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float triangle_colors[])
 {
     int x_max = num_triangles_x;
     int y_max = num_triangles_y;
@@ -225,8 +233,8 @@ void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::
             int points_tested_per_side = 20;
             float diff_x_pixels = width_triangle_pixels / points_tested_per_side;
             float diff_y_pixels = height_triangle_pixels / points_tested_per_side;
-            int count_1 = 0;
-            int count_2 = 0;
+            float count_1 = 0;
+            float count_2 = 0;
             for (int j = 0; j < points_tested_per_side; j++)
             {
                 for (int i = 0; i < points_tested_per_side; i++)
@@ -234,33 +242,43 @@ void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::
                     int x2 = std::floor((i * diff_x_pixels) + bottom_left_x_pixels);
                     int y2 = std::ceil(bottom_left_y_pixels - (j * diff_y_pixels));
                     cv::Vec3b val = img.at<cv::Vec3b>(y2, x2);
+                    float saliency_val = saliency_map.at<float>(y2, x2);
+                    saliency_val += saliency_bias;
 
-                    //float ress = (-height_triangle_pixels / width_triangle_pixels) * (float)i + height_triangle_pixels;
                     int vall = i + j + 1;
-                    if (vall < points_tested_per_side)
+                    if (vall <= points_tested_per_side)
                     {
-                        total_1[0] += val[0];
-                        total_1[1] += val[1];
-                        total_1[2] += val[2];
-                        ++count_1;
+                        if (use_saliency)
+                        {
+                            total_1[0] += (val[0] * saliency_val);
+                            total_1[1] += (val[1] * saliency_val);
+                            total_1[2] += (val[2] * saliency_val);
+                            count_1 += saliency_val;
+                        }
+                        else
+                        {
+                            total_1[0] += val[0];
+                            total_1[1] += val[1];
+                            total_1[2] += val[2];
+                            count_1 += 1.0;
+                        }
                     }
-                    else if (vall > points_tested_per_side)
+                    if (vall >= points_tested_per_side)
                     {
-                        total_2[0] += val[0];
-                        total_2[1] += val[1];
-                        total_2[2] += val[2];
-                        ++count_2;
-                    }
-                    else
-                    {
-                        total_1[0] += val[0];
-                        total_1[1] += val[1];
-                        total_1[2] += val[2];
-                        ++count_1;
-                        total_2[0] += val[0];
-                        total_2[1] += val[1];
-                        total_2[2] += val[2];
-                        ++count_2;
+                        if (use_saliency)
+                        {
+                            total_2[0] += (val[0] * saliency_val);
+                            total_2[1] += (val[1] * saliency_val);
+                            total_2[2] += (val[2] * saliency_val);
+                            count_2 += saliency_val;
+                        }
+                        else
+                        {
+                            total_2[0] += val[0];
+                            total_2[1] += val[1];
+                            total_2[2] += val[2];
+                            count_2 += 1.0;
+                        }
                     }
                 }
             }
@@ -342,15 +360,23 @@ static void glfw_error_callback(int error, const char* description)
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
 
-void load_picture(cv::Mat& img, const std::string file_name)
+void load_picture(cv::Mat& img, cv::Mat& saliency_map, const std::string file_name)
 {
+    // load image
     std::string image_path = cv::samples::findFile(file_name);
     img = cv::imread(image_path, cv::IMREAD_COLOR);
     if (img.empty())
     {
         std::cout << "error loading image: " << image_path << std::endl;
     }
-    // std::cout << img << std::endl;
+
+    // compute saliencymap
+    auto saliency_alg = cv::saliency::StaticSaliencySpectralResidual::create();
+    saliency_alg->computeSaliency(img, saliency_map);
+    // cv::imshow("saliency map", saliency_map);
+    // cv::waitKey(0);
+
+    std::cout << saliency_map << std::endl;
 }
 
 GLFWwindow* glfw_setup()
