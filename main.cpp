@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <cmath>
 
-// #include <opencv2/opencv.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -18,11 +17,14 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-constexpr int max_triangles_per_side = 73;
-constexpr int saliency_bias = 0.001;
+constexpr int max_triangles_per_side = 52; // all the nvidia uniform buffer can handle
+constexpr int saliency_bias = 0.1;
+enum saliency_method { fine_grained, spectral_residual };
 
+// function pointers for function that are at the bottom
 static void glfw_error_callback(int error, const char* description);
-void load_picture(cv::Mat& img, cv::Mat& saliency_map, const std::string file_name);
+void load_picture(cv::Mat& img, const std::string file_name);
+void update_saliency_map(const cv::Mat& img, cv::Mat& saliency_map, int saliency_mode);
 GLFWwindow* glfw_setup();
 void update_vertex_buffer(int num_triangles_x, int num_triangles_y, float vertices[], const float vertex_colors[]);
 void update_index_buffer(int num_triangles_x, int num_triangles_y, unsigned int indices[]);
@@ -34,7 +36,7 @@ int main(int argc, const char** argv)
     // load image into opencv buffer
     cv::Mat img;
     cv::Mat saliency_map;
-    load_picture(img, saliency_map, "lenna.png");
+    load_picture(img, "lenna.png");
     // load_picture(img, saliency_map, "test2.png");
 
     GLFWwindow* window = glfw_setup();
@@ -70,6 +72,8 @@ int main(int argc, const char** argv)
     int num_triangles_dimensions[2] = { 1, 1 };
     bool square_grid = true;
     bool use_saliency = true;
+    int saliency_mode = 0;
+    bool show_saliency_map = false;
     int mode = 0;
     ImVec4 vcolor1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
     ImVec4 vcolor2 = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
@@ -80,6 +84,7 @@ int main(int argc, const char** argv)
     float weightw = 0.0f;
 
     int old_mode = -1;
+    int old_saliency_mode = -1;
     int old_num_triangles_dimensions[2] = { 0, 0};
     bool old_use_saliency = false;
 
@@ -108,8 +113,10 @@ int main(int argc, const char** argv)
 
             ImGui::SliderInt2("# triangles width x height", num_triangles_dimensions, 1, max_triangles_per_side);
             ImGui::Checkbox("square grid", &square_grid);
-            ImGui::Checkbox("use saliency", &use_saliency);
 
+            ImGui::Combo("saliency mode", &saliency_mode, "fine_grained\0spectral_residual\0\0");
+            ImGui::Checkbox("use saliency", &use_saliency);
+            ImGui::Checkbox("show saliency map (crashes program)", &show_saliency_map);
 
             ImGui::Combo("mode", &mode, "constant\0bilinear\0step\0smooth step\0testing\0\0");
 
@@ -149,14 +156,23 @@ int main(int argc, const char** argv)
         unsigned int indices[num_vertices];
         update_index_buffer(num_triangles_dimensions[0], num_triangles_dimensions[1], indices);
 
+
+
         // -----------------------------------------------------------------------------
         // update triangle coloring variables (only when something changed and recalculation is needed)
-        if (!(mode == old_mode && num_triangles_dimensions[0] == old_num_triangles_dimensions[0] && num_triangles_dimensions[1] == old_num_triangles_dimensions[1] && use_saliency == old_use_saliency))
+        if (!(mode == old_mode && 
+              num_triangles_dimensions[0] == old_num_triangles_dimensions[0] && 
+              num_triangles_dimensions[1] == old_num_triangles_dimensions[1] && 
+              use_saliency == old_use_saliency && 
+              old_saliency_mode == saliency_mode))
         {
             old_mode = mode;
             old_num_triangles_dimensions[0] = num_triangles_dimensions[0];
             old_num_triangles_dimensions[1] = num_triangles_dimensions[1];
             old_use_saliency = use_saliency;
+            old_saliency_mode = saliency_mode;
+
+            update_saliency_map(img, saliency_map, saliency_mode);
 
             switch (mode)
             {
@@ -166,6 +182,13 @@ int main(int argc, const char** argv)
                 case 1:
                     break;
             }
+        }
+
+        if (show_saliency_map)
+        {
+            show_saliency_map = false;
+            cv::imshow("saliency map", saliency_map);
+            cv::waitKey(0);
         }
 
         // -----------------------------------------------------------------------------
@@ -360,7 +383,30 @@ static void glfw_error_callback(int error, const char* description)
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
 
-void load_picture(cv::Mat& img, cv::Mat& saliency_map, const std::string file_name)
+void update_saliency_map(const cv::Mat& img, cv::Mat& saliency_map, int saliency_mode)
+{
+    // compute saliencymap
+    switch (saliency_mode)
+    {
+        case saliency_method::fine_grained:
+        {
+            auto saliency_alg = cv::saliency::StaticSaliencyFineGrained::create();
+            saliency_alg->computeSaliency(img, saliency_map);
+            break;
+        }
+        case saliency_method::spectral_residual:
+        {
+            auto saliency_alg = cv::saliency::StaticSaliencySpectralResidual::create();
+            saliency_alg->computeSaliency(img, saliency_map);
+            break;
+        }
+    }
+    // cv::imshow("saliency map", saliency_map);
+    // cv::waitKey(0);
+    // std::cout << saliency_map << std::endl;
+}
+
+void load_picture(cv::Mat& img, const std::string file_name)
 {
     // load image
     std::string image_path = cv::samples::findFile(file_name);
@@ -370,13 +416,7 @@ void load_picture(cv::Mat& img, cv::Mat& saliency_map, const std::string file_na
         std::cout << "error loading image: " << image_path << std::endl;
     }
 
-    // compute saliencymap
-    auto saliency_alg = cv::saliency::StaticSaliencySpectralResidual::create();
-    saliency_alg->computeSaliency(img, saliency_map);
-    // cv::imshow("saliency map", saliency_map);
-    // cv::waitKey(0);
-
-    std::cout << saliency_map << std::endl;
+    // std::cout << img << std::endl;
 }
 
 GLFWwindow* glfw_setup()

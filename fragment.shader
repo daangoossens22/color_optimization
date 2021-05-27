@@ -12,7 +12,7 @@ const int step_cutoff = 2;
 const int step_smooth = 3;
 const int testing = 4;
 
-const int triangles_per_side = 73;
+const int triangles_per_side = 52;
 
 uniform variables1 {
   float triangle_colors[triangles_per_side * triangles_per_side * 2 * 3];
