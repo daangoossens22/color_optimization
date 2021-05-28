@@ -116,7 +116,7 @@ int main(int argc, const char** argv)
 
             ImGui::Combo("saliency mode", &saliency_mode, "fine_grained\0spectral_residual\0\0");
             ImGui::Checkbox("use saliency", &use_saliency);
-            ImGui::Checkbox("show saliency map (crashes program)", &show_saliency_map);
+            ImGui::Checkbox("show saliency map (close window by pressing any key)", &show_saliency_map);
 
             ImGui::Combo("mode", &mode, "constant\0bilinear\0step\0smooth step\0testing\0\0");
 
@@ -156,8 +156,6 @@ int main(int argc, const char** argv)
         unsigned int indices[num_vertices];
         update_index_buffer(num_triangles_dimensions[0], num_triangles_dimensions[1], indices);
 
-
-
         // -----------------------------------------------------------------------------
         // update triangle coloring variables (only when something changed and recalculation is needed)
         if (!(mode == old_mode && 
@@ -186,9 +184,10 @@ int main(int argc, const char** argv)
 
         if (show_saliency_map)
         {
-            show_saliency_map = false;
             cv::imshow("saliency map", saliency_map);
             cv::waitKey(0);
+            cv::destroyAllWindows();
+            show_saliency_map = false;
         }
 
         // -----------------------------------------------------------------------------
