@@ -7,10 +7,11 @@ in vec3 coord;
 uniform vec4 weight;
 uniform int mode;
 const int constant_color = 0;
-const int bilinear_interpolation = 1;
-const int step_cutoff = 2;
-const int step_smooth = 3;
-const int testing = 4;
+const int bilinear_interpolation_no_opt = 1;
+const int bilinear_interpolation_opt = 2;
+const int step_cutoff = 3;
+const int step_smooth = 4;
+const int testing = 5;
 
 const int triangles_per_side = 52;
 
@@ -37,7 +38,8 @@ void main()
       break;
 
     // ---------------------------------------------------------------------
-    case bilinear_interpolation:
+    case bilinear_interpolation_no_opt:
+    case bilinear_interpolation_opt:
       color = coord.x * colours[0] + coord.y * colours[1] + coord.z * colours[2];
       break;
 
