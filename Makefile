@@ -26,11 +26,12 @@ CXXFLAGS = -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends
 CXXFLAGS += -g -Wall -Wformat
 LIBS =
 
-CXXFLAGS += -I/usr/include/opencv4
+# CXXFLAGS += -I/usr/include/opencv4
+CXXFLAGS += `pkg-config --cflags opencv4`
+CXXFLAGS += `pkg-config --cflags eigen3`
 LIBS += -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_saliency
 # CXXFLAGS += $(shell pkg-config --cflags opencv4)
 # LIBS += $(shell pkg-config --libs opencv4)
-# CXXFLAGS += `pkg-config --cflags opencv4`
 # LIBS += `pkg-config --static --libs opencv4`
 
 ##---------------------------------------------------------------------

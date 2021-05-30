@@ -10,6 +10,8 @@
 #include <opencv2/saliency.hpp>
 #include <opencv2/highgui.hpp>
 
+#include <Eigen/Dense>
+
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include "shader.h"
@@ -29,6 +31,7 @@ GLFWwindow* glfw_setup();
 void update_vertex_buffer(int num_triangles_x, int num_triangles_y, float vertices[], const float vertex_colors[]);
 void update_index_buffer(int num_triangles_x, int num_triangles_y, unsigned int indices[]);
 void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float triangle_colors[]);
+void update_bilinear_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[]);
 
 
 int main(int argc, const char** argv)
@@ -325,6 +328,40 @@ void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::
         }
     }
 }
+
+void update_bilinear_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[])
+{
+    int x_max = num_triangles_x;
+    int y_max = num_triangles_y;
+    float width_triangle_pixels = (float)img.cols / (float)x_max;
+    float height_triangle_pixels = (float)img.rows / (float)y_max;
+
+    for (int y = 0; y < y_max; y++)
+    {
+        for (int x = 0; x < x_max; x++)
+        {
+            unsigned int bottom_left = (x_max + 1) * y + x;
+
+            float bottom_left_x_pixels = (float)(vertices[bottom_left * 6] * img.cols);
+            float bottom_left_y_pixels = (float)img.rows - 1.0 - (float)(vertices[bottom_left * 6 + 1] * img.rows);
+            int points_tested_per_side = 20;
+            float diff_x_pixels = width_triangle_pixels / points_tested_per_side;
+            float diff_y_pixels = height_triangle_pixels / points_tested_per_side;
+            for (int j = 0; j < points_tested_per_side; j++)
+            {
+                for (int i = 0; i < points_tested_per_side; i++)
+                {
+                    int x2 = std::floor((i * diff_x_pixels) + bottom_left_x_pixels);
+                    int y2 = std::ceil(bottom_left_y_pixels - (j * diff_y_pixels));
+                    cv::Vec3b val = img.at<cv::Vec3b>(y2, x2);
+                    float saliency_val = saliency_map.at<float>(y2, x2);
+                    saliency_val += saliency_bias;
+                }
+            }
+        }
+    }
+}
+
 void update_vertex_buffer(int num_triangles_x, int num_triangles_y, float vertices[], const float vertex_colors[])
 {
     // set/update shader parameters
