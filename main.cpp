@@ -10,7 +10,13 @@
 #include <opencv2/saliency.hpp>
 #include <opencv2/highgui.hpp>
 
-#include <Eigen/Dense>
+#include <Eigen/Eigen>
+#include <Eigen/Core>
+#include <Eigen/LU>
+#include <Eigen/Cholesky>
+#include <Eigen/Householder>
+#include <Eigen/SVD>
+#include <Eigen/QR>
 
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
@@ -76,12 +82,12 @@ int main(int argc, const char** argv)
     // imgui variables
     bool show_demo_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    int num_triangles_dimensions[2] = { 2, 2 };
+    int num_triangles_dimensions[2] = { 16, 16 };
     bool square_grid = true;
     bool use_saliency = true;
     int saliency_mode = 0;
     bool show_saliency_map = false;
-    int mode = 1;
+    int mode = 0;
     ImVec4 vcolor1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
     ImVec4 vcolor2 = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
     ImVec4 vcolor3 = ImVec4(0.0f, 0.0f, 1.0f, 1.0f);
@@ -456,11 +462,13 @@ void update_bilinear_colors_opt(int num_triangles_x, int num_triangles_y, const 
             }
         }
     }
-    // Eigen::VectorXf sol_r = matA_r.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(b_r);
+    // Eigen::VectorXf sol_r = matA_r.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(b_r); // really slow and small number problem
     // Eigen::VectorXf sol_r = matA_r.householderQr().solve(b_r);
-    Eigen::VectorXf sol_r = (matA_r.transpose() * matA_r).ldlt().solve(matA_r.transpose() * b_r);
-    Eigen::VectorXf sol_g = (matA_g.transpose() * matA_g).ldlt().solve(matA_g.transpose() * b_g);
-    Eigen::VectorXf sol_b = (matA_b.transpose() * matA_b).ldlt().solve(matA_b.transpose() * b_b);
+    Eigen::VectorXf sol_r = matA_r.colPivHouseholderQr().solve(b_r) / 255.0f;
+    Eigen::VectorXf sol_g = matA_g.colPivHouseholderQr().solve(b_g) / 255.0f;
+    Eigen::VectorXf sol_b = matA_b.colPivHouseholderQr().solve(b_b) / 255.0f;
+    // Eigen::VectorXf sol_r = matA_r.fullPivHouseholderQr().solve(b_r); // 0 problem
+    // Eigen::VectorXf sol_r = (matA_r.transpose() * matA_r).ldlt().solve(matA_r.transpose() * b_r); // nan problem
 
     for (int y = 0; y < y_max; y++)
     {
@@ -469,14 +477,21 @@ void update_bilinear_colors_opt(int num_triangles_x, int num_triangles_y, const 
             int base_index = (x + y * x_max) * 3;
             int index_color = (x + y * x_max);
 
-            // set colors
-            vertex_colors[base_index + 0] = sol_r(index_color + 0);
-            vertex_colors[base_index + 1] = sol_g(index_color + 1);
-            vertex_colors[base_index + 2] = sol_b(index_color + 2);
+            float color_r = sol_r(index_color);
+            float color_g = sol_g(index_color);
+            float color_b = sol_b(index_color);
+            color_r = (std::isnan(color_r) || color_r < 0.0) ? 0.0f : color_r;
+            color_g = (std::isnan(color_g) || color_g < 0.0) ? 0.0f : color_g;
+            color_b = (std::isnan(color_b) || color_b < 0.0) ? 0.0f : color_b;
 
-            vertices[base_index * 2 + 3] = sol_r(index_color + 0);
-            vertices[base_index * 2 + 4] = sol_g(index_color + 1);
-            vertices[base_index * 2 + 5] = sol_b(index_color + 2);
+            // set colors
+            vertex_colors[base_index + 0] = color_r;
+            vertex_colors[base_index + 1] = color_g;
+            vertex_colors[base_index + 2] = color_b;
+
+            vertices[base_index * 2 + 3] = color_r;
+            vertices[base_index * 2 + 4] = color_g;
+            vertices[base_index * 2 + 5] = color_b;
         }
     }
 }
