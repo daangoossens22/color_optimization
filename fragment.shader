@@ -6,17 +6,22 @@ in vec3 coord;
 
 uniform vec4 weight;
 uniform int mode;
-const int constant_color = 0;
-const int bilinear_interpolation_no_opt = 1;
-const int bilinear_interpolation_opt = 2;
-const int step_cutoff = 3;
-const int step_smooth = 4;
-const int testing = 5;
+const int constant_color_avg = 0;
+const int constant_color_center = 1;
+const int bilinear_interpolation_no_opt = 2;
+const int bilinear_interpolation_opt = 3;
+const int bicubic_interpolation = 4;
+const int step_cutoff = 5;
+const int step_smooth = 6;
+const int testing = 7;
 
 const int triangles_per_side = 52;
 
 uniform variables1 {
-  float triangle_colors[triangles_per_side * triangles_per_side * 2 * 3];
+  float var1[triangles_per_side * triangles_per_side * 2 * 3];
+};
+uniform variables2 {
+  float var2[triangles_per_side * triangles_per_side * 2 * 3];
 };
 // layout (std140) uniform variables1 {
 // uniform variables1 {
@@ -33,8 +38,9 @@ void main()
   // set output color of pixel according to which coloring mode is selected
   switch (mode)
   {
-    case constant_color:
-      color = vec3(triangle_colors[gl_PrimitiveID * 3], triangle_colors[(gl_PrimitiveID * 3) + 1], triangle_colors[(gl_PrimitiveID * 3) + 2]);
+    case constant_color_avg:
+    case constant_color_center:
+      color = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
       break;
 
     // ---------------------------------------------------------------------
@@ -43,6 +49,9 @@ void main()
       color = coord.x * colours[0] + coord.y * colours[1] + coord.z * colours[2];
       break;
 
+    // ---------------------------------------------------------------------
+    case bicubic_interpolation:
+      break;
     // ---------------------------------------------------------------------
     case step_cutoff:
       {

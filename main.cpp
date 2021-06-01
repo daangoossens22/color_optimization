@@ -39,9 +39,11 @@ GLFWwindow* glfw_setup();
 void update_vertex_buffer(int num_triangles_x, int num_triangles_y, float vertices[], const float vertex_colors[]);
 void update_index_buffer(int num_triangles_x, int num_triangles_y, unsigned int indices[]);
 
+void update_vertex_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[]);
+void update_triangle_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float triangle_colors[]);
 void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float triangle_colors[]);
-void update_bilinear_colors_no_opt(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[]);
 void update_bilinear_colors_opt(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[]);
+void update_bicubic_variables(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[]);
 
 
 int main(int argc, const char** argv)
@@ -96,6 +98,7 @@ int main(int argc, const char** argv)
     float weightz = 0.0f;
     float weightw = 0.0f;
 
+    // for checking if recalculation is needed
     int old_mode = -1;
     int old_saliency_mode = -1;
     int old_num_triangles_dimensions[2] = { 0, 0};
@@ -118,7 +121,6 @@ int main(int argc, const char** argv)
         ImGui::NewFrame();
         {
             ImGui::Begin("Main window");
-            // ImGui::Text("This is some useful text.");
 
             ImGui::Checkbox("Demo Window", &show_demo_window);
 
@@ -131,7 +133,7 @@ int main(int argc, const char** argv)
             ImGui::Checkbox("use saliency", &use_saliency);
             ImGui::Checkbox("show saliency map (close window by pressing any key)", &show_saliency_map);
 
-            ImGui::Combo("mode", &mode, "constant\0bilinear (no opt)\0bilinear (opt)\0step\0smooth step\0testing\0\0");
+            ImGui::Combo("mode", &mode, "constant (avg)\0 constant (center)\0bilinear (no opt)\0bilinear (opt)\0bicubic\0step\0smooth step\0testing\0\0");
 
             ImGui::ColorEdit3("vertex 1", (float*)&vcolor1);
             ImGui::ColorEdit3("vertex 2", (float*)&vcolor2);
@@ -191,14 +193,23 @@ int main(int argc, const char** argv)
                     update_constant_colors(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, triangle_colors);
                     break;
                 case 1:
-                    update_bilinear_colors_no_opt(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, vertex_colors);
+                    update_triangle_colors(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, triangle_colors);
                     break;
                 case 2:
+                    update_vertex_colors(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, vertex_colors);
+                    break;
+                case 3:
                     update_bilinear_colors_opt(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, vertex_colors);
+                    break;
+                case 4:
+                    update_bicubic_variables(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, vertex_colors);
                     break;
             }
         }
 
+        // -----------------------------------------------------------------------------
+        // shows the saliency map when the checkbox is selected in the imgui window
+        // currently can only be exited by pressing any key (if the close button is pressed it locks the program)
         if (show_saliency_map)
         {
             cv::imshow("saliency map", saliency_map);
@@ -251,6 +262,11 @@ int main(int argc, const char** argv)
     return 0;
 }
 
+
+// -----------------------------------------------------------------------------
+// for each triangle it gets a number of points inside the triangle and gets the color and saliency value of that position in the image
+// then it takes a weighted average if saliency is turned on, otherwise it computes the average without the saliency weights
+// sets those values in the triangle color array which can be accessed later in the glsl shader by their gl_PrimitiveID (triangle number)
 void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float triangle_colors[])
 {
     int x_max = num_triangles_x;
@@ -268,10 +284,8 @@ void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::
             unsigned int bottom_left = (x_max + 1) * y + x;
 
             // top left = (0, 0), top right = (0, img.cols - 1), bottom left = (img.rows - 1, 0)
-            // float bottom_left_x_pixels = (float)(vertices[bottom_left * 6] * img.cols); // TODO shouldn't this be (img.cols - 1)??
-            // float bottom_left_y_pixels = (float)img.rows - 1.0 - (float)(vertices[bottom_left * 6 + 1] * img.rows);
-            float bottom_left_x_pixels = (float)(vertices[bottom_left * 6] * (img.cols - 1.0)); // TODO shouldn't this be (img.cols - 1)??
-            float bottom_left_y_pixels = (float)img.rows - 1.0 - (float)(vertices[bottom_left * 6 + 1] * (img.rows - 1.0)); // TODO same here??
+            float bottom_left_x_pixels = (float)(vertices[bottom_left * 6] * (img.cols - 1.0));
+            float bottom_left_y_pixels = (float)img.rows - 1.0 - (float)(vertices[bottom_left * 6 + 1] * (img.rows - 1.0));
             float total_1[3] = {0.0, 0.0, 0.0};
             float total_2[3] = {0.0, 0.0, 0.0};
             float count_1 = 0;
@@ -345,7 +359,9 @@ void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::
     }
 }
 
-void update_bilinear_colors_no_opt(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[])
+// -----------------------------------------------------------------------------
+// for each vertex it gets the color at that point in the actual image and updates the vertex color attribute in the vertex buffer
+void update_vertex_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[])
 {
     // set/update shader parameters
     int x_max = num_triangles_x + 1;
@@ -375,7 +391,60 @@ void update_bilinear_colors_no_opt(int num_triangles_x, int num_triangles_y, con
     }
 }
 
+// -----------------------------------------------------------------------------
+// for each triangle it gets the color at the center of the triangle and updates the vertex color attribute in the vertex buffer
+void update_triangle_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float triangle_colors[])
+{
+    int x_max = num_triangles_x;
+    int y_max = num_triangles_y;
+    float width_triangle_pixels = (float)img.cols / (float)x_max;
+    float height_triangle_pixels = (float)img.rows / (float)y_max;
 
+    for (int y = 0; y < y_max; y++)
+    {
+        for (int x = 0; x < x_max; x++)
+        {
+            // (x_max + 1) becuase the rightmost vertices are already tested in the previous box
+            unsigned int bottom_left = (x_max + 1) * y + x;
+
+            // top left = (0, 0), top right = (0, img.cols - 1), bottom left = (img.rows - 1, 0)
+            float bottom_left_x_pixels = (float)(vertices[bottom_left * 6] * (img.cols - 1.0));
+            float bottom_left_y_pixels = (float)img.rows - 1.0 - (float)(vertices[bottom_left * 6 + 1] * (img.rows - 1.0));
+
+            // TODO find center triangle 1
+            int x1 = std::floor((0.35355 * width_triangle_pixels) + bottom_left_x_pixels);
+            int y1 = std::ceil(bottom_left_y_pixels - (0.35355 * height_triangle_pixels));
+            cv::Vec3b val1 = img.at<cv::Vec3b>(y1, x1);
+            // TODO find center triangle 2
+            int x2 = std::floor(((1-0.35355) * width_triangle_pixels) + bottom_left_x_pixels);
+            int y2 = std::ceil(bottom_left_y_pixels - ((1-0.35355) * height_triangle_pixels));
+            cv::Vec3b val2 = img.at<cv::Vec3b>(y2, x2);
+
+            int basee = (x + (y * x_max)) * 6;
+            triangle_colors[basee + 0] = val1[2] / 255.0;
+            triangle_colors[basee + 1] = val1[1] / 255.0;
+            triangle_colors[basee + 2] = val1[0] / 255.0;
+            triangle_colors[basee + 3] = val2[2] / 255.0;
+            triangle_colors[basee + 4] = val2[1] / 255.0;
+            triangle_colors[basee + 5] = val2[0] / 255.0;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// TODO
+void update_bicubic_variables(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[])
+{
+    update_vertex_colors(num_triangles_x, num_triangles_y, img, saliency_map, use_saliency, vertices, vertex_colors);
+    // TODO
+}
+
+
+// -----------------------------------------------------------------------------
+// tries to optimize the vertex colors for bilinear interpolation
+// select points inside each triangle and given the error function (color_image - color_interpolation) * saliency_value
+// using the error functions for points inside the triangles it tries to optimize the vertex colors such that the total error is minimize
+// problems: the optimization return a lot of NaN and negative color values. only solution is to try and optimize it in another way
 void update_bilinear_colors_opt(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[])
 {
     int x_max = num_triangles_x;
@@ -496,6 +565,10 @@ void update_bilinear_colors_opt(int num_triangles_x, int num_triangles_y, const 
     }
 }
 
+// -----------------------------------------------------------------------------
+// updates the array that defines where the vertices are
+// defines the vertex position in such a way that it makes a square grid with the appropriate number of vertices given the number of triangles at each side (selected in imgui)
+// (0, 0) is bottom left (1, 1) is top right
 void update_vertex_buffer(int num_triangles_x, int num_triangles_y, float vertices[], const float vertex_colors[])
 {
     // set/update shader parameters
@@ -521,6 +594,9 @@ void update_vertex_buffer(int num_triangles_x, int num_triangles_y, float vertic
     }
 }
 
+// -----------------------------------------------------------------------------
+// updates the array that defines which vertices form a triangle
+// triangle 0 is at bottom left and the last triangle is at the top right (numbering left to right and then bottom to top)
 void update_index_buffer(int num_triangles_x, int num_triangles_y, unsigned int indices[])
 {
     // set index buffer (array of the vertices that form a triangle)
@@ -553,6 +629,9 @@ static void glfw_error_callback(int error, const char* description)
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
 
+// -----------------------------------------------------------------------------
+// computes the saliency map from the image buffer given the selected saliency mode (from the imgui window)
+// and replaces the saliency map buffer with it
 void update_saliency_map(const cv::Mat& img, cv::Mat& saliency_map, int saliency_mode)
 {
     // compute saliencymap
@@ -576,6 +655,8 @@ void update_saliency_map(const cv::Mat& img, cv::Mat& saliency_map, int saliency
     // std::cout << saliency_map << std::endl;
 }
 
+// -----------------------------------------------------------------------------
+// uses opencv to load an image to the image buffer
 void load_picture(cv::Mat& img, const std::string file_name)
 {
     // load image
@@ -589,6 +670,8 @@ void load_picture(cv::Mat& img, const std::string file_name)
     // std::cout << img << std::endl;
 }
 
+// -----------------------------------------------------------------------------
+// create the glfw window and the opengl context within the window
 GLFWwindow* glfw_setup()
 {
     // Setup window
@@ -603,11 +686,9 @@ GLFWwindow* glfw_setup()
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
     glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE);
-    //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
 
     // Create window with graphics context
-    // GLFWwindow* window = glfwCreateWindow(900, 900, "Test", NULL, NULL);
-    GLFWwindow* window = glfwCreateWindow(1600, 900, "Test", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1600, 900, "Coloring of Triangulations of an Image", NULL, NULL);
     if (window == NULL)
     {
         glfwTerminate();
