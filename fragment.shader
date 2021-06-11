@@ -23,12 +23,39 @@ uniform variables1 {
 uniform variables2 {
   float var2[triangles_per_side * triangles_per_side * 2 * 3];
 };
+uniform variables3 {
+  float var3[triangles_per_side * triangles_per_side * 2];
+};
+uniform variables4 {
+  float var4[triangles_per_side * triangles_per_side * 2];
+};
 // layout (std140) uniform variables1 {
 // uniform variables1 {
 //   float red_color[100*100];
 //   float green_color[100*100];
 //   float blue_color[100*100];
 // };
+
+vec2 float_to_coor(in float val)
+{
+  vec2 point = vec2(0.0f, 0.0f);
+  if (val <= 1.0f)
+  {
+    vec2 dir = vert[1].xy - vert[0].xy;
+    point = vert[0].xy + dir * val;
+  }
+  else if (val <= 2.0f)
+  {
+    vec2 dir = vert[2].xy - vert[1].xy;
+    point = vert[1].xy + dir * (val - 1.0f);
+  }
+  else
+  {
+    vec2 dir = vert[0].xy - vert[2].xy;
+    point = vert[2].xy + dir * (val - 2.0f);
+  }
+  return(point);
+}
 
 void main()
 {
@@ -55,15 +82,27 @@ void main()
     // ---------------------------------------------------------------------
     case step_cutoff:
       {
-        vec2 dir1 = weight.zw - weight.xy;
+        // float point1 = var3[gl_PrimitiveID];
+        // float point2 = var4[gl_PrimitiveID];
+        float point1 = weight.x;
+        float point2 = weight.y;
+
+        vec2 p1 = float_to_coor(point1);
+        vec2 p2 = float_to_coor(point2);
+
+        vec2 dir1 = p2 - p1;
         dir1 = vec2(dir1.y, -dir1.x); // rotate 90 degrees
-        vec2 dir2 = normal_coor.xy - weight.xy;
+        vec2 dir2 = normal_coor.xy - p1;
         float result = dot(dir1, dir2); // vecors don't need to be normalized -> only need to know the sign
 
-        color = step(0.0f, result) * colours[0];
-
-        if (length(normal_coor.xy - weight.xy) < 0.01) { color = colours[1]; }
-        else if (length(normal_coor.xy - weight.zw) < 0.01) { color = colours[2]; }
+        if (result < 0.0f)
+        {
+          color = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
+        }
+        else
+        {
+          color = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
+        }
       }
       break;
 
@@ -84,14 +123,34 @@ void main()
 
     // ---------------------------------------------------------------------
     case testing:
-      vec2 lenn = vec2(weight.x - normal_coor.x, weight.y - normal_coor.y);
-      if ((lenn.x * lenn.x) + (lenn.y * lenn.y) < 0.1)
+    {
+      float point1 = weight.x;
+      float point2 = weight.y;
+
+      vec2 p1 = float_to_coor(point1);
+      vec2 p2 = float_to_coor(point2);
+
+      float dis1 = length(normal_coor.xy - p1);
+      float dis2 = length(normal_coor.xy - p2);
+      if (dis1 < 0.1f)
       {
-        color = colours[0];
+        color = vec3(1.0f, 0.0f, 0.0f);
       }
-      break;
+      else if (dis2 < 0.1f)
+      {
+        color = vec3(0.0f, 0.0f, 1.0f);
+      }
+      else
+      {
+        color = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
+      }
+
+    }
+    break;
   }
 
 
   FragColor = vec4(color, 1.0);
 }
+
+

@@ -30,6 +30,7 @@ LIBS =
 CXXFLAGS += `pkg-config --cflags opencv4`
 CXXFLAGS += `pkg-config --cflags eigen3`
 LIBS += -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_saliency
+LIBS += `pkg-config --libs gsl`
 # CXXFLAGS += $(shell pkg-config --cflags opencv4)
 # LIBS += $(shell pkg-config --libs opencv4)
 # LIBS += `pkg-config --static --libs opencv4`
