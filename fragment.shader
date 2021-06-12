@@ -17,17 +17,17 @@ const int testing = 7;
 
 const int triangles_per_side = 52;
 
+// main color (r, g, b)
 uniform variables1 {
   float var1[triangles_per_side * triangles_per_side * 2 * 3];
 };
+// secondairy color (r, g, b)
 uniform variables2 {
   float var2[triangles_per_side * triangles_per_side * 2 * 3];
 };
+// 3 variables per triangle
 uniform variables3 {
-  float var3[triangles_per_side * triangles_per_side * 2];
-};
-uniform variables4 {
-  float var4[triangles_per_side * triangles_per_side * 2];
+  float var3[triangles_per_side * triangles_per_side * 2 * 3];
 };
 // layout (std140) uniform variables1 {
 // uniform variables1 {
@@ -82,10 +82,10 @@ void main()
     // ---------------------------------------------------------------------
     case step_cutoff:
       {
-        // float point1 = var3[gl_PrimitiveID];
-        // float point2 = var4[gl_PrimitiveID];
-        float point1 = weight.x;
-        float point2 = weight.y;
+        float point1 = var3[(gl_PrimitiveID * 3) + 0];
+        float point2 = var3[(gl_PrimitiveID * 3) + 1];
+        // float point1 = weight.x;
+        // float point2 = weight.y;
 
         vec2 p1 = float_to_coor(point1);
         vec2 p2 = float_to_coor(point2);

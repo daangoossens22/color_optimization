@@ -3,6 +3,8 @@
 #include "imgui_impl_opengl3.h"
 #include <stdio.h>
 #include <cmath>
+#include <iterator>
+#include <vector>
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -47,22 +49,22 @@ void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::
 void get_average_color(float bottom_left_x_pixels, float bottom_left_y_pixels, float diff_x_pixels, float diff_y_pixels, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float total_1[3], float total_2[3]);
 void update_bilinear_colors_opt(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[]);
 void update_bicubic_variables(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[]);
-void update_step_constant_color(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, const cv::Mat& edges, bool use_saliency, const float vertices[], float triangle_colors1[], float triangle_colors2[]);
+void update_step_constant_color(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, const cv::Mat& edges, bool use_saliency, const float vertices[], float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[]);
 
 int main(int argc, const char** argv)
 {
     // load image into opencv buffer
     cv::Mat img_temp, img;
     cv::Mat saliency_map;
-    // load_picture(img, "lenna.png");
-    load_picture(img_temp, "carrot2.png");
+    load_picture(img_temp, "apple.jpg");
+    // load_picture(img_temp, "carrot2.png");
     cv::flip(img_temp, img, 0);
 
     GLFWwindow* window = glfw_setup();
     if (!window) { return 1; };
 
     Shader shader ("vertex.shader", "geometry.shader", "fragment.shader");
-    int num_triangles = max_triangles_per_side * max_triangles_per_side * 2 * 3;
+    int num_triangles = max_triangles_per_side * max_triangles_per_side * 2 * 3; // is actually # triangles * 3
     
     // -----------------------------------------------------------------------------
     // generate opengl buffers
@@ -74,7 +76,7 @@ int main(int argc, const char** argv)
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    unsigned int variables1, variables2, variables3, variables4;
+    unsigned int variables1, variables2, variables3;
     glGenBuffers(1, &variables1);
     glBindBuffer(GL_UNIFORM_BUFFER, variables1);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
@@ -82,6 +84,11 @@ int main(int argc, const char** argv)
 
     glGenBuffers(1, &variables2);
     glBindBuffer(GL_UNIFORM_BUFFER, variables2);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    glGenBuffers(1, &variables3);
+    glBindBuffer(GL_UNIFORM_BUFFER, variables3);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
@@ -93,17 +100,22 @@ int main(int argc, const char** argv)
     glUniformBlockBinding(shader.ID, inddd2, 1);
     glBindBufferBase(GL_UNIFORM_BUFFER, 1, variables2);
 
+    unsigned int inddd3 = glGetUniformBlockIndex(shader.ID, "variables3");
+    glUniformBlockBinding(shader.ID, inddd2, 2);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 2, variables2);
+
     // -----------------------------------------------------------------------------
     // imgui variables
     bool show_demo_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    int num_triangles_dimensions[2] = { 11, 11 };
+    int num_triangles_dimensions[2] = { 2, 2 };
     bool square_grid = true;
     bool use_saliency = true;
     int saliency_mode = 0;
     bool show_saliency_map = false;
-    int mode = 0;
+    int mode = 5;
     int low_threshold = 130;
+    bool show_edge_map = false;
     ImVec4 vcolor1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
     ImVec4 vcolor2 = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
     ImVec4 vcolor3 = ImVec4(0.0f, 0.0f, 1.0f, 1.0f);
@@ -117,11 +129,13 @@ int main(int argc, const char** argv)
     int old_saliency_mode = -1;
     int old_num_triangles_dimensions[2] = { 0, 0};
     bool old_use_saliency = false;
+    int old_low_threshold = -1;
 
     // make an array for the vertex and triangle colors that can later be loaded into an opengl buffer
     float vertex_colors[(max_triangles_per_side + 1) * (max_triangles_per_side + 1) * 3];
     float triangle_colors1[num_triangles];
     float triangle_colors2[num_triangles];
+    float variable_per_triangles[num_triangles];
 
     // Main loop
     while (!glfwWindowShouldClose(window))
@@ -151,6 +165,7 @@ int main(int argc, const char** argv)
             ImGui::Combo("mode", &mode, "constant (avg)\0 constant (center)\0bilinear (no opt)\0bilinear (opt)\0bicubic\0step\0smooth step\0testing\0\0");
 
             ImGui::SliderInt("theshold edge detection", &low_threshold, 0, 160);
+            ImGui::Checkbox("show edge map (close window by pressing any key)", &show_edge_map);
 
             ImGui::ColorEdit3("vertex 1", (float*)&vcolor1);
             ImGui::ColorEdit3("vertex 2", (float*)&vcolor2);
@@ -194,13 +209,15 @@ int main(int argc, const char** argv)
               num_triangles_dimensions[0] == old_num_triangles_dimensions[0] && 
               num_triangles_dimensions[1] == old_num_triangles_dimensions[1] && 
               use_saliency == old_use_saliency && 
-              old_saliency_mode == saliency_mode))
+              old_saliency_mode == saliency_mode &&
+              old_low_threshold == low_threshold))
         {
             old_mode = mode;
             old_num_triangles_dimensions[0] = num_triangles_dimensions[0];
             old_num_triangles_dimensions[1] = num_triangles_dimensions[1];
             old_use_saliency = use_saliency;
             old_saliency_mode = saliency_mode;
+            old_low_threshold = low_threshold;
 
             update_saliency_map(img, saliency_map, saliency_mode);
 
@@ -225,7 +242,7 @@ int main(int argc, const char** argv)
                     cv::Mat edges;
                     get_edges(img, edges, low_threshold);
 
-                    update_step_constant_color(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, edges, use_saliency, vertices, triangle_colors1, triangle_colors2);
+                    update_step_constant_color(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, edges, use_saliency, vertices, triangle_colors1, triangle_colors2, variable_per_triangles);
                     break;
             }
         }
@@ -235,10 +252,25 @@ int main(int argc, const char** argv)
         // currently can only be exited by pressing any key (if the close button is pressed it locks the program)
         if (show_saliency_map)
         {
-            cv::imshow("saliency map", saliency_map);
+            cv::Mat temp_saliency_map;
+            update_saliency_map(img_temp, temp_saliency_map, saliency_mode);
+            cv::namedWindow("saliency map", cv::WINDOW_NORMAL);
+            cv::resizeWindow("saliency map", 600, 600);
+            cv::imshow("saliency map", temp_saliency_map);
             cv::waitKey(0);
             cv::destroyAllWindows();
             show_saliency_map = false;
+        }
+        if (show_edge_map)
+        {
+            cv::Mat edges;
+            get_edges(img_temp, edges, low_threshold);
+            cv::namedWindow("edge map", cv::WINDOW_NORMAL);
+            cv::resizeWindow("edge map", 600, 600);
+            cv::imshow("edge map", edges);
+            cv::waitKey(0);
+            cv::destroyAllWindows();
+            show_edge_map = false;
         }
 
         // -----------------------------------------------------------------------------
@@ -249,6 +281,10 @@ int main(int argc, const char** argv)
 
         glBindBuffer(GL_UNIFORM_BUFFER, variables2);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors2);
+        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+        glBindBuffer(GL_UNIFORM_BUFFER, variables3);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, variable_per_triangles);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
         
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
@@ -468,7 +504,7 @@ void update_triangle_colors(int num_triangles_x, int num_triangles_y, const cv::
     }
 }
 
-void update_step_constant_color(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, const cv::Mat& edges, bool use_saliency, const float vertices[], float triangle_colors1[], float triangle_colors2[])
+void update_step_constant_color(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, const cv::Mat& edges, bool use_saliency, const float vertices[], float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[])
 {
     int x_max = num_triangles_x;
     int y_max = num_triangles_y;
@@ -491,20 +527,37 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
             float top_right_x_pixels = bottom_left_x_pixels + width_triangle_pixels;
             float top_right_y_pixels = bottom_left_y_pixels + height_triangle_pixels;
 
+            int y_start = std::floor(bottom_left_y_pixels);
+            int x_start = std::floor(bottom_left_x_pixels);
+            int y_width = std::floor(top_right_y_pixels) - y_start;
+            int x_width = std::floor(top_right_x_pixels) - x_start;
+
             // set of points for both triangles in the box
             std::vector<double> x_points_1;
             std::vector<double> y_points_1;
             std::vector<double> x_points_2;
             std::vector<double> y_points_2;
+
             // loop through all pixels in box; add edge pixels to set of points
-            for (int y1 = std::floor(bottom_left_y_pixels); y1 < std::floor(top_right_y_pixels); ++y1)
+            for (int y1 = y_start; y1 < std::floor(top_right_y_pixels); ++y1)
             {
-                for (int x1 = std::floor(bottom_left_x_pixels); x1 < std::floor(top_right_x_pixels); ++x1)
+                for (int x1 = x_start; x1 < std::floor(top_right_x_pixels); ++x1)
                 {
                     int val = (int)edges.at<unsigned char>(y1, x1);
                     if (val > 0)
                     {
                         // add to vector // check triangle 1 or 2
+                        int pos = x1 + y1 - x_start - y_start;
+                        if (pos <= x_width)
+                        {
+                            x_points_1.push_back(x1);
+                            y_points_1.push_back(y1);
+                        }
+                        if (pos >= x_width)
+                        {
+                            x_points_2.push_back(x1);
+                            y_points_2.push_back(y1);
+                        }
                     }
                 }
             }
@@ -520,29 +573,79 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
             int basee = (x + (y * x_max)) * 6;
             if (x_points_1.size() < 2)
             {
-                triangle_colors1[basee + 0] = total_1[2];
-                triangle_colors1[basee + 1] = total_1[1];
-                triangle_colors1[basee + 2] = total_1[0];
+                // triangle_colors1[basee + 0] = total_1[2];
+                // triangle_colors1[basee + 1] = total_1[1];
+                // triangle_colors1[basee + 2] = total_1[0];
 
-                triangle_colors2[basee + 0] = total_1[2];
-                triangle_colors2[basee + 1] = total_1[1];
-                triangle_colors2[basee + 2] = total_1[0];
+                // triangle_colors2[basee + 0] = total_1[2];
+                // triangle_colors2[basee + 1] = total_1[1];
+                // triangle_colors2[basee + 2] = total_1[0];
+                triangle_colors1[basee + 0] = 0.0f;
+                triangle_colors1[basee + 1] = 0.0f;
+                triangle_colors1[basee + 2] = 0.0f;
+
+                triangle_colors2[basee + 0] = 0.0f;
+                triangle_colors2[basee + 1] = 0.0f;
+                triangle_colors2[basee + 2] = 0.0f;
             }
             else
             {
+                double c0, c1, cov00, cov01, cov11, sumsq;
+                gsl_fit_linear(&x_points_1[0], 1, &y_points_1[0], 1, x_points_1.size(), &c0, &c1, &cov00, &cov01, &cov11, &sumsq);
+                // TODO nan output when vertical line
+                // TODO make average color fucntion that takes as input the selected box and function that tells it if it should count that point
+                if (std::isnan(c0) || std::isnan(c1))
+                {
+                    std::copy(x_points_1.begin(), x_points_1.end(), std::ostream_iterator<int>(std::cout, " "));
+                    std::copy(y_points_1.begin(), y_points_1.end(), std::ostream_iterator<int>(std::cout, " "));
+                    std::cout << c0 << "\t" << c1 << "\n\n";
+                }
+
+                variable_per_triangles[basee + 0] = 0.0f;
+                variable_per_triangles[basee + 1] = 0.0f;
+                variable_per_triangles[basee + 2] = 0.0f; // not used
+
+                triangle_colors1[basee + 0] = 0.0f;
+                triangle_colors1[basee + 1] = 0.0f;
+                triangle_colors1[basee + 2] = 1.0f;
+
+                triangle_colors2[basee + 0] = 0.0f;
+                triangle_colors2[basee + 1] = 0.0f;
+                triangle_colors2[basee + 2] = 1.0f;
             }
             if (x_points_2.size() < 2)
             {
-                triangle_colors1[basee + 3] = total_2[2];
-                triangle_colors1[basee + 4] = total_2[1];
-                triangle_colors1[basee + 5] = total_2[0];
+                // triangle_colors1[basee + 3] = total_2[2];
+                // triangle_colors1[basee + 4] = total_2[1];
+                // triangle_colors1[basee + 5] = total_2[0];
 
-                triangle_colors2[basee + 3] = total_2[2];
-                triangle_colors2[basee + 4] = total_2[1];
-                triangle_colors2[basee + 5] = total_2[0];
+                // triangle_colors2[basee + 3] = total_2[2];
+                // triangle_colors2[basee + 4] = total_2[1];
+                // triangle_colors2[basee + 5] = total_2[0];
+                triangle_colors1[basee + 3] = 0.0f;
+                triangle_colors1[basee + 4] = 0.0f;
+                triangle_colors1[basee + 5] = 0.0f;
+
+                triangle_colors2[basee + 3] = 0.0f;
+                triangle_colors2[basee + 4] = 0.0f;
+                triangle_colors2[basee + 5] = 0.0f;
             }
             else
             {
+                double c0, c1, cov00, cov01, cov11, sumsq;
+                gsl_fit_linear(&x_points_2[0], 1, &y_points_2[0], 1, x_points_2.size(), &c0, &c1, &cov00, &cov01, &cov11, &sumsq);
+
+                variable_per_triangles[basee + 3] = 0.0f;
+                variable_per_triangles[basee + 4] = 0.0f;
+                variable_per_triangles[basee + 5] = 0.0f; // not used
+
+                triangle_colors1[basee + 3] = 1.0f;
+                triangle_colors1[basee + 4] = 0.0f;
+                triangle_colors1[basee + 5] = 0.0f;
+
+                triangle_colors2[basee + 3] = 1.0f;
+                triangle_colors2[basee + 4] = 0.0f;
+                triangle_colors2[basee + 5] = 0.0f;
             }
         }
     }
