@@ -46,7 +46,7 @@ void update_index_buffer(int num_triangles_x, int num_triangles_y, unsigned int 
 void update_vertex_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[]);
 void update_triangle_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float triangle_colors1[]);
 void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float triangle_colors1[]);
-void get_average_color(float bottom_left_x_pixels, float bottom_left_y_pixels, float diff_x_pixels, float diff_y_pixels, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float total_1[3], float total_2[3]);
+void get_average_color(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float total[3], std::function<bool (float x, float y)> count_pixel);
 void update_bilinear_colors_opt(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[]);
 void update_bicubic_variables(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[]);
 void update_step_constant_color(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, const cv::Mat& edges, bool use_saliency, const float vertices[], float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[]);
@@ -56,7 +56,7 @@ int main(int argc, const char** argv)
     // load image into opencv buffer
     cv::Mat img_temp, img;
     cv::Mat saliency_map;
-    load_picture(img_temp, "apple.jpg");
+    load_picture(img_temp, "apple2.jpg");
     // load_picture(img_temp, "carrot2.png");
     cv::flip(img_temp, img, 0);
 
@@ -101,14 +101,14 @@ int main(int argc, const char** argv)
     glBindBufferBase(GL_UNIFORM_BUFFER, 1, variables2);
 
     unsigned int inddd3 = glGetUniformBlockIndex(shader.ID, "variables3");
-    glUniformBlockBinding(shader.ID, inddd2, 2);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 2, variables2);
+    glUniformBlockBinding(shader.ID, inddd3, 2);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 2, variables3);
 
     // -----------------------------------------------------------------------------
     // imgui variables
     bool show_demo_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    int num_triangles_dimensions[2] = { 2, 2 };
+    int num_triangles_dimensions[2] = { 33, 33 };
     bool square_grid = true;
     bool use_saliency = true;
     int saliency_mode = 0;
@@ -202,6 +202,8 @@ int main(int argc, const char** argv)
         int num_vertices = num_triangles_dimensions[0] * num_triangles_dimensions[1] * 2 * 3; // 2 triangles, 3 values per triangle
         unsigned int indices[num_vertices];
         update_index_buffer(num_triangles_dimensions[0], num_triangles_dimensions[1], indices);
+
+        // std::copy(vertices.begin(), vertices.end(), std::ostream_iterator<float>(std::cout, " "));
 
         // -----------------------------------------------------------------------------
         // update triangle coloring variables (only when something changed and recalculation is needed)
@@ -336,8 +338,8 @@ void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::
     int y_max = num_triangles_y;
     float width_triangle_pixels = (float)img.cols / (float)x_max;
     float height_triangle_pixels = (float)img.rows / (float)y_max;
-    float diff_x_pixels = width_triangle_pixels / points_tested_per_side;
-    float diff_y_pixels = height_triangle_pixels / points_tested_per_side;
+    // float diff_x_pixels = width_triangle_pixels / ((float)points_tested_per_side - 1.0f);
+    // float diff_y_pixels = height_triangle_pixels / ((float)points_tested_per_side - 1.0f);
 
     for (int y = 0; y < y_max; y++)
     {
@@ -347,12 +349,14 @@ void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::
             unsigned int bottom_left = (x_max + 1) * y + x;
 
             // top left = (0, 0), top right = (0, img.cols - 1), bottom left = (img.rows - 1, 0)
+            // TODO check this (shouldn't it be img.cols - 1
             float bottom_left_x_pixels = (float)(vertices[bottom_left * 6] * img.cols);
             float bottom_left_y_pixels = (float)(vertices[bottom_left * 6 + 1] * img.rows);
 
             float total_1[3] = {0.0, 0.0, 0.0};
             float total_2[3] = {0.0, 0.0, 0.0};
-            get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, diff_x_pixels, diff_y_pixels, img, saliency_map, use_saliency, total_1, total_2);
+            get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_1, [](float x, float y) {return x + y <= 1.0f;});
+            get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_2, [](float x, float y) {return x + y >= 1.0f;});
 
             int basee = (x + (y * x_max)) * 6;
             triangle_colors1[basee + 0] = total_1[2];
@@ -361,72 +365,52 @@ void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::
             triangle_colors1[basee + 3] = total_2[2];
             triangle_colors1[basee + 4] = total_2[1];
             triangle_colors1[basee + 5] = total_2[0];
-            
-            // cv::Vec3b reccc = img.at<cv::Vec3b>(0, img.cols - 1);
         }
     }
 }
 
-void get_average_color(float bottom_left_x_pixels, float bottom_left_y_pixels, float diff_x_pixels, float diff_y_pixels, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float total_1[3], float total_2[3])
+void get_average_color(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float total[3], std::function<bool (float x, float y)> count_pixel)
 {
-    float count_1 = 0;
-    float count_2 = 0;
+    float diff_x_pixels = width_triangle_pixels / points_tested_per_side;
+    float diff_y_pixels = height_triangle_pixels / points_tested_per_side;
+    float count = 0;
     for (int j = 0; j < points_tested_per_side; j++)
     {
         for (int i = 0; i < points_tested_per_side; i++)
         {
-            int x2 = std::floor((i * diff_x_pixels) + bottom_left_x_pixels);
-            int y2 = std::floor((j * diff_y_pixels) + bottom_left_y_pixels);
+            int x2 = std::floor((i * diff_x_pixels) + bottom_left_x_pixels + 0.5 * diff_x_pixels);
+            int y2 = std::floor((j * diff_y_pixels) + bottom_left_y_pixels + 0.5 * diff_y_pixels);
             cv::Vec3b val = img.at<cv::Vec3b>(y2, x2);
             float saliency_val = saliency_map.at<float>(y2, x2);
             saliency_val += saliency_bias;
 
-            int vall = i + j + 1;
-            if (vall <= points_tested_per_side)
+            // sampled points are inside the triangle with 0.5 offset, so that the sample points are not on the sides of the triangle which can cause trouble at the edge of the image
+            float x = ((float)i + 0.5) / (float)points_tested_per_side;
+            float y = ((float)j + 0.5) / (float)points_tested_per_side;
+            if (count_pixel(x, y))
             {
                 if (use_saliency)
                 {
-                    total_1[0] += (val[0] * saliency_val);
-                    total_1[1] += (val[1] * saliency_val);
-                    total_1[2] += (val[2] * saliency_val);
-                    count_1 += saliency_val;
+                    total[0] += (val[0] * saliency_val);
+                    total[1] += (val[1] * saliency_val);
+                    total[2] += (val[2] * saliency_val);
+                    count += saliency_val;
                 }
                 else
                 {
-                    total_1[0] += val[0];
-                    total_1[1] += val[1];
-                    total_1[2] += val[2];
-                    count_1 += 1.0;
-                }
-            }
-            if (vall >= points_tested_per_side)
-            {
-                if (use_saliency)
-                {
-                    total_2[0] += (val[0] * saliency_val);
-                    total_2[1] += (val[1] * saliency_val);
-                    total_2[2] += (val[2] * saliency_val);
-                    count_2 += saliency_val;
-                }
-                else
-                {
-                    total_2[0] += val[0];
-                    total_2[1] += val[1];
-                    total_2[2] += val[2];
-                    count_2 += 1.0;
+                    total[0] += val[0];
+                    total[1] += val[1];
+                    total[2] += val[2];
+                    count += 1.0;
                 }
             }
         }
     }
-    // std::cout << total_1 << "\t";
-    total_1[0] /= (count_1 * 255.0);
-    total_1[1] /= (count_1 * 255.0);
-    total_1[2] /= (count_1 * 255.0);
-    total_2[0] /= (count_2 * 255.0);
-    total_2[1] /= (count_2 * 255.0);
-    total_2[2] /= (count_2 * 255.0);
-    // std::cout << total_1 << "\t" << count_1 << "\n";
+    total[0] /= (count * 255.0);
+    total[1] /= (count * 255.0);
+    total[2] /= (count * 255.0);
 }
+
 
 // -----------------------------------------------------------------------------
 // for each vertex it gets the color at that point in the actual image and updates the vertex color attribute in the vertex buffer
@@ -510,8 +494,6 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
     int y_max = num_triangles_y;
     float width_triangle_pixels = (float)img.cols / (float)x_max;
     float height_triangle_pixels = (float)img.rows / (float)y_max;
-    float diff_x_pixels = width_triangle_pixels / points_tested_per_side;
-    float diff_y_pixels = height_triangle_pixels / points_tested_per_side;
 
     for (int y = 0; y < y_max; y++)
     {
@@ -546,33 +528,48 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
                     int val = (int)edges.at<unsigned char>(y1, x1);
                     if (val > 0)
                     {
+                        float x2 = ((float)x1 - (float)x_start + 0.5f) / (float)x_width;
+                        float y2 = ((float)y1 - (float)y_start + 0.5f) / (float)y_width;
+                        float pos = x2 + y2;
+                        if (pos <= 1.0f)
+                        {
+                            x_points_1.push_back(x2);
+                            y_points_1.push_back(y2);
+                        }
+                        if (pos >= 1.0f)
+                        {
+                            x_points_2.push_back(x2);
+                            y_points_2.push_back(y2);
+                        }
+
                         // add to vector // check triangle 1 or 2
-                        int pos = x1 + y1 - x_start - y_start;
-                        if (pos <= x_width)
-                        {
-                            x_points_1.push_back(x1);
-                            y_points_1.push_back(y1);
-                        }
-                        if (pos >= x_width)
-                        {
-                            x_points_2.push_back(x1);
-                            y_points_2.push_back(y1);
-                        }
+                        // int pos = x1 + y1 - x_start - y_start;
+                        // if (pos <= x_width)
+                        // {
+                        //     x_points_1.push_back(x1);
+                        //     y_points_1.push_back(y1);
+                        // }
+                        // if (pos >= x_width)
+                        // {
+                        //     x_points_2.push_back(x1);
+                        //     y_points_2.push_back(y1);
+                        // }
                     }
                 }
             }
+            // std::copy(x_points_1.begin(), x_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
+            // std::copy(y_points_1.begin(), y_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
             // if points.empty -> calculate straight line through points
             // else -> constant color
             float total_1[3] = {0.0, 0.0, 0.0};
             float total_2[3] = {0.0, 0.0, 0.0};
-            if (x_points_1.size() < 2 || x_points_2.size() < 2)
-            {
-                get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, diff_x_pixels, diff_y_pixels, img, saliency_map, use_saliency, total_1, total_2);
-            }
 
             int basee = (x + (y * x_max)) * 6;
+            bool (*test_left_triangle)(float, float) = [](float x, float y) {return x + y <= 1.0f;};
+            bool (*test_right_triangle)(float, float) = [](float x, float y) {return x + y >= 1.0f;};
             if (x_points_1.size() < 2)
             {
+                // get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_1, test_left_triangle);
                 // triangle_colors1[basee + 0] = total_1[2];
                 // triangle_colors1[basee + 1] = total_1[1];
                 // triangle_colors1[basee + 2] = total_1[0];
@@ -594,27 +591,64 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
                 gsl_fit_linear(&x_points_1[0], 1, &y_points_1[0], 1, x_points_1.size(), &c0, &c1, &cov00, &cov01, &cov11, &sumsq);
                 // TODO nan output when vertical line
                 // TODO make average color fucntion that takes as input the selected box and function that tells it if it should count that point
+                // bool (*test_func_left)(float, float);
+                // bool (*test_func_right)(float, float);
+                std::function<bool (float x, float y)> test_func_left;
+                std::function<bool (float x, float y)> test_func_right;
                 if (std::isnan(c0) || std::isnan(c1))
                 {
-                    std::copy(x_points_1.begin(), x_points_1.end(), std::ostream_iterator<int>(std::cout, " "));
-                    std::copy(y_points_1.begin(), y_points_1.end(), std::ostream_iterator<int>(std::cout, " "));
-                    std::cout << c0 << "\t" << c1 << "\n\n";
+                    // std::copy(x_points_1.begin(), x_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
+                    // std::copy(y_points_1.begin(), y_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
+                    // std::cout << c0 << "\t" << c1 << "\n\n";
+                    float x_line = (float)x_points_1[0];
+                    // test_func_left = [x_line, test_left_triangle](float x, float y) { return (test_left_triangle(x, y) && x <= x_line);};
+                    test_func_left = [x_line](float x, float y) { return (x + y <= 1.0f && x <= x_line);};
+                    test_func_right = [x_line](float x, float y) { return (x + y <= 1.0f && x >= x_line);};
+
+                    variable_per_triangles[basee + 0] = x_line;
+                    variable_per_triangles[basee + 1] = 1.0f + std::sqrt(std::pow(1.0f - x_line, 2.0f) * 2) / std::sqrt(2); // length side sqrt(2), y-intersection = 1 - x, lenght v1, intersection / total length side
+                    std::cout << x_line << "\t" << variable_per_triangles[basee + 1] << "\n";
+
+                    get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_1, test_func_left);
+                    triangle_colors1[basee + 0] = total_1[2];
+                    triangle_colors1[basee + 1] = total_1[1];
+                    triangle_colors1[basee + 2] = total_1[0];
+                    total_1[0] = 0.0f;
+                    total_1[1] = 0.0f;
+                    total_1[2] = 0.0f;
+                    get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_1, test_func_left);
+                    triangle_colors2[basee + 0] = total_1[2];
+                    triangle_colors2[basee + 1] = total_1[1];
+                    triangle_colors2[basee + 2] = total_1[0];
+
+                    // TODO color acquisition not fully working yet
+
+                    // triangle_colors1[basee + 0] = 0.0f;
+                    // triangle_colors1[basee + 1] = 1.0f;
+                    // triangle_colors1[basee + 2] = 0.0f;
+
+                    // triangle_colors2[basee + 0] = 1.0f;
+                    // triangle_colors2[basee + 1] = 1.0f;
+                    // triangle_colors2[basee + 2] = 0.0f;
                 }
+                else
+                {
+                    variable_per_triangles[basee + 0] = 0.0f;
+                    variable_per_triangles[basee + 1] = 0.0f;
+                    variable_per_triangles[basee + 2] = 0.0f; // not used
 
-                variable_per_triangles[basee + 0] = 0.0f;
-                variable_per_triangles[basee + 1] = 0.0f;
-                variable_per_triangles[basee + 2] = 0.0f; // not used
+                    triangle_colors1[basee + 0] = 0.0f;
+                    triangle_colors1[basee + 1] = 0.0f;
+                    triangle_colors1[basee + 2] = 1.0f;
 
-                triangle_colors1[basee + 0] = 0.0f;
-                triangle_colors1[basee + 1] = 0.0f;
-                triangle_colors1[basee + 2] = 1.0f;
-
-                triangle_colors2[basee + 0] = 0.0f;
-                triangle_colors2[basee + 1] = 0.0f;
-                triangle_colors2[basee + 2] = 1.0f;
+                    triangle_colors2[basee + 0] = 0.0f;
+                    triangle_colors2[basee + 1] = 0.0f;
+                    triangle_colors2[basee + 2] = 1.0f;
+                }
             }
             if (x_points_2.size() < 2)
             {
+                // get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_2, test_right_triangle);
                 // triangle_colors1[basee + 3] = total_2[2];
                 // triangle_colors1[basee + 4] = total_2[1];
                 // triangle_colors1[basee + 5] = total_2[0];
