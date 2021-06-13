@@ -56,7 +56,8 @@ int main(int argc, const char** argv)
     // load image into opencv buffer
     cv::Mat img_temp, img;
     cv::Mat saliency_map;
-    load_picture(img_temp, "apple2.jpg");
+    // load_picture(img_temp, "apple2.jpg");
+    load_picture(img_temp, "lenna.png");
     // load_picture(img_temp, "carrot2.png");
     cv::flip(img_temp, img, 0);
 
@@ -113,7 +114,7 @@ int main(int argc, const char** argv)
     bool use_saliency = true;
     int saliency_mode = 0;
     bool show_saliency_map = false;
-    int mode = 0;
+    int mode = 5;
     int low_threshold = 130;
     bool show_edge_map = false;
     ImVec4 vcolor1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
@@ -542,6 +543,9 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
                     }
                 }
             }
+            // std::copy(x_points_1.begin(), x_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
+            // std::copy(y_points_1.begin(), y_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
+            // std::cout << c0 << "\t" << c1 << "\n\n";
             // if points.empty -> calculate straight line through points
             // else -> constant color
             float total_1[3] = {0.0, 0.0, 0.0};
@@ -550,7 +554,8 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
             int basee = (x + (y * x_max)) * 6;
             bool (*test_left_triangle)(float, float) = [](float x, float y) {return x + y <= 1.0f;};
             bool (*test_right_triangle)(float, float) = [](float x, float y) {return x + y >= 1.0f;};
-            if (x_points_1.size() < 2)
+            // there are not enough points to calculate a line from
+            if (x_points_1.size() < 4)
             {
                 get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_1, test_left_triangle);
                 triangle_colors1[basee + 0] = total_1[2];
@@ -560,78 +565,81 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
                 triangle_colors2[basee + 0] = total_1[2];
                 triangle_colors2[basee + 1] = total_1[1];
                 triangle_colors2[basee + 2] = total_1[0];
-                // triangle_colors1[basee + 0] = 0.0f;
-                // triangle_colors1[basee + 1] = 0.0f;
-                // triangle_colors1[basee + 2] = 0.0f;
-
-                // triangle_colors2[basee + 0] = 0.0f;
-                // triangle_colors2[basee + 1] = 0.0f;
-                // triangle_colors2[basee + 2] = 0.0f;
             }
             else
             {
                 double c0, c1, cov00, cov01, cov11, sumsq;
                 gsl_fit_linear(&x_points_1[0], 1, &y_points_1[0], 1, x_points_1.size(), &c0, &c1, &cov00, &cov01, &cov11, &sumsq);
-                // TODO nan output when vertical line
-                // TODO make average color fucntion that takes as input the selected box and function that tells it if it should count that point
-                // bool (*test_func_left)(float, float);
-                // bool (*test_func_right)(float, float);
                 std::function<bool (float x, float y)> test_func_left;
                 std::function<bool (float x, float y)> test_func_right;
+                // if the estimated line is vertical (i.e. slope is inf or in this case it returns nan)
                 if (std::isnan(c0) || std::isnan(c1))
                 {
-                    // std::copy(x_points_1.begin(), x_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
-                    // std::copy(y_points_1.begin(), y_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
-                    // std::cout << c0 << "\t" << c1 << "\n\n";
                     float x_line = (float)x_points_1[0];
                     // test_func_left = [x_line, test_left_triangle](float x, float y) { return (test_left_triangle(x, y) && x <= x_line);};
-                    // test_func_left = [x_line](float x, float y) { return (x + y <= 1.0f && x <= x_line);};
-                    // test_func_right = [x_line](float x, float y) { return (x + y <= 1.0f && x >= x_line);};
-                    test_func_left = [](float x, float y) { return (x + y <= 1.0f && x <= 0.5);};
-                    test_func_right = [](float x, float y) { return (x + y <= 1.0f && x >= 0.5);};
+                    test_func_left = [x_line](float x, float y) { return (x + y <= 1.0f && x <= x_line);};
+                    test_func_right = [x_line](float x, float y) { return (x + y <= 1.0f && x >= x_line);};
 
                     variable_per_triangles[basee + 0] = x_line;
                     variable_per_triangles[basee + 1] = 1.0f + std::sqrt(std::pow(1.0f - x_line, 2.0f) * 2) / std::sqrt(2); // length side sqrt(2), y-intersection = 1 - x, lenght v1, intersection / total length side
-                    std::cout << x_line << "\t" << variable_per_triangles[basee + 1] << "\n";
-
-                    get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_1, test_func_left);
-                    triangle_colors1[basee + 0] = total_1[2];
-                    triangle_colors1[basee + 1] = total_1[1];
-                    triangle_colors1[basee + 2] = total_1[0];
-                    total_1[0] = 0.0f;
-                    total_1[1] = 0.0f;
-                    total_1[2] = 0.0f;
-                    get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_1, test_func_right);
-                    triangle_colors2[basee + 0] = total_1[2];
-                    triangle_colors2[basee + 1] = total_1[1];
-                    triangle_colors2[basee + 2] = total_1[0];
-
-                    // TODO color acquisition not fully working yet
-
-                    // triangle_colors1[basee + 0] = 0.0f;
-                    // triangle_colors1[basee + 1] = 1.0f;
-                    // triangle_colors1[basee + 2] = 0.0f;
-
-                    // triangle_colors2[basee + 0] = 1.0f;
-                    // triangle_colors2[basee + 1] = 1.0f;
-                    // triangle_colors2[basee + 2] = 0.0f;
-                }
-                else
-                {
-                    variable_per_triangles[basee + 0] = 0.0f;
-                    variable_per_triangles[basee + 1] = 0.0f;
                     variable_per_triangles[basee + 2] = 0.0f; // not used
 
-                    triangle_colors1[basee + 0] = 0.0f;
-                    triangle_colors1[basee + 1] = 0.0f;
-                    triangle_colors1[basee + 2] = 1.0f;
-
-                    triangle_colors2[basee + 0] = 0.0f;
-                    triangle_colors2[basee + 1] = 0.0f;
-                    triangle_colors2[basee + 2] = 1.0f;
                 }
+                // if it is a non-vertical line
+                else
+                {
+                    double intersect_x = -c0 / c1; // TODO test for c1 = 0.0f (horizontal line)??
+                    double intersect_y = c0;
+                    int indexx = 0;
+                    double points_x[2] = {0.0f, 0.0f};
+                    double points_y[2] = {0.0f, 0.0f};
+                    if (intersect_x >= 0.0 && intersect_x <= 1.0)
+                    { 
+                        variable_per_triangles[basee + indexx] = intersect_x; 
+                        points_x[indexx] = intersect_x;
+                        points_y[indexx] = 0.0f;
+                        ++indexx;
+                    }
+                    if (!(intersect_y >= 0.0 && intersect_y <= 1.0) || indexx == 0)
+                    { 
+                        float x_line = (1.0f - c0) / (1.0f + c1);
+                        variable_per_triangles[basee + indexx] = 1.0f + std::sqrt(std::pow(1.0f - x_line, 2.0f) * 2) / std::sqrt(2); // length side sqrt(2), y-intersection = 1 - x, lenght v1, intersection / total length side
+                        points_x[indexx] = x_line;
+                        points_y[indexx] = 1 - x_line;
+                        ++indexx;
+                    }
+                    if (indexx < 2)
+                    {
+                        variable_per_triangles[basee + indexx] = 2.0f + (1.0f - intersect_y); 
+                        points_x[indexx] = 0.0f;
+                        points_y[indexx] = 1.0f - intersect_y;
+                        ++indexx;
+                    }
+                    // std::cout << "Y = " << c0 << " + " << c1 << " * X" << "\n";
+                    // std::cout << variable_per_triangles[basee + 0] << ", " << variable_per_triangles[basee + 1] << "\n\n";
+                    // std::copy(x_points_1.begin(), x_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
+                    variable_per_triangles[basee + 2] = 0.0f; // not used
+                    // float points_xx = points_y[0] - points_y[1];
+                    // float points_yy = -points_x[0] + points_x[1];
+
+                    test_func_left = [points_x, points_y](float x, float y) { return (x + y <= 1.0f && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) < 0.0f);};
+                    test_func_right = [points_x, points_y](float x, float y) { return (x + y <= 1.0f && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) >= 0.0f);};
+                }
+
+                get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_1, test_func_left);
+                triangle_colors1[basee + 0] = total_1[2];
+                triangle_colors1[basee + 1] = total_1[1];
+                triangle_colors1[basee + 2] = total_1[0];
+
+                total_1[0] = 0.0f;
+                total_1[1] = 0.0f;
+                total_1[2] = 0.0f;
+                get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_1, test_func_right);
+                triangle_colors2[basee + 0] = total_1[2];
+                triangle_colors2[basee + 1] = total_1[1];
+                triangle_colors2[basee + 2] = total_1[0];
             }
-            if (x_points_2.size() < 2)
+            if (x_points_2.size() < 4)
             {
                 get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_2, test_right_triangle);
                 triangle_colors1[basee + 3] = total_2[2];
@@ -641,30 +649,80 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
                 triangle_colors2[basee + 3] = total_2[2];
                 triangle_colors2[basee + 4] = total_2[1];
                 triangle_colors2[basee + 5] = total_2[0];
-                // triangle_colors1[basee + 3] = 0.0f;
-                // triangle_colors1[basee + 4] = 0.0f;
-                // triangle_colors1[basee + 5] = 0.0f;
-
-                // triangle_colors2[basee + 3] = 0.0f;
-                // triangle_colors2[basee + 4] = 0.0f;
-                // triangle_colors2[basee + 5] = 0.0f;
             }
             else
             {
                 double c0, c1, cov00, cov01, cov11, sumsq;
                 gsl_fit_linear(&x_points_2[0], 1, &y_points_2[0], 1, x_points_2.size(), &c0, &c1, &cov00, &cov01, &cov11, &sumsq);
+                std::function<bool (float x, float y)> test_func_left;
+                std::function<bool (float x, float y)> test_func_right;
+                // if the estimated line is vertical (i.e. slope is inf or in this case it returns nan)
+                if (std::isnan(c0) || std::isnan(c1))
+                {
+                    float x_line = (float)x_points_2[0];
+                    // test_func_left = [x_line, test_left_triangle](float x, float y) { return (test_left_triangle(x, y) && x <= x_line);};
+                    test_func_left = [x_line](float x, float y) { return (x + y >= 1.0f && x <= x_line);};
+                    test_func_right = [x_line](float x, float y) { return (x + y >= 1.0f && x >= x_line);};
 
-                variable_per_triangles[basee + 3] = 0.0f;
-                variable_per_triangles[basee + 4] = 0.0f;
-                variable_per_triangles[basee + 5] = 0.0f; // not used
+                    variable_per_triangles[basee + 3] = std::sqrt(std::pow(1.0f - x_line, 2.0f) * 2) / std::sqrt(2); // length side sqrt(2), y-intersection = 1 - x, lenght v1, intersection / total length side
+                    variable_per_triangles[basee + 4] = 1.0f + x_line;
+                    variable_per_triangles[basee + 5] = 0.0f; // not used
 
-                triangle_colors1[basee + 3] = 1.0f;
-                triangle_colors1[basee + 4] = 0.0f;
-                triangle_colors1[basee + 5] = 0.0f;
+                }
+                // if it is a non-vertical line
+                else
+                {
+                    double intersect_top_x = (1.0f - c0) / c1; // TODO test for c1 = 0.0f (horizontal line)??
+                    double intersect_right_y = c0 + c1;
+                    int indexx = 0;
+                    double points_x[2] = {0.0f, 0.0f};
+                    double points_y[2] = {0.0f, 0.0f};
+                    if (c1 != -1.0f)
+                    { 
+                        float x_line = (1.0f - c0) / (1.0f + c1);
+                        if (x_line >= 0.0f && x_line <= 1.0f)
+                        {
+                            variable_per_triangles[basee + 3 + indexx] = std::sqrt(std::pow(1.0f - x_line, 2.0f) * 2) / std::sqrt(2); // length side sqrt(2), y-intersection = 1 - x, lenght v1, intersection / total length side
+                            points_x[indexx] = x_line;
+                            points_y[indexx] = 1 - x_line;
+                            ++indexx;
+                        }
+                    }
+                    if (intersect_top_x >= 0.0 && intersect_top_x <= 1.0)
+                    { 
+                        variable_per_triangles[basee + 3 + indexx] = 1.0f + intersect_top_x; 
+                        points_x[indexx] = intersect_top_x;
+                        points_y[indexx] = 1.0f;
+                        ++indexx;
+                    }
+                    if (indexx < 2)
+                    {
+                        variable_per_triangles[basee + 3 + indexx] = 2.0f + (1.0f - intersect_right_y); 
+                        points_x[indexx] = 1.0f;
+                        points_y[indexx] = 1.0f - intersect_right_y; // TODO should this be withous 1.0f -
+                        ++indexx;
+                    }
+                    // std::cout << "Y = " << c0 << " + " << c1 << " * X" << "\n";
+                    // std::cout << variable_per_triangles[basee + 0] << ", " << variable_per_triangles[basee + 1] << "\n\n";
+                    // std::copy(x_points_1.begin(), x_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
+                    variable_per_triangles[basee + 5] = 0.0f; // not used
 
-                triangle_colors2[basee + 3] = 1.0f;
-                triangle_colors2[basee + 4] = 0.0f;
-                triangle_colors2[basee + 5] = 0.0f;
+                    test_func_left = [points_x, points_y](float x, float y) { return (x + y >= 1.0f && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) < 0.0f);};
+                    test_func_right = [points_x, points_y](float x, float y) { return (x + y >= 1.0f && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) >= 0.0f);};
+                }
+
+                get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_2, test_func_left);
+                triangle_colors1[basee + 3] = total_2[2];
+                triangle_colors1[basee + 4] = total_2[1];
+                triangle_colors1[basee + 5] = total_2[0];
+
+                total_2[0] = 0.0f;
+                total_2[1] = 0.0f;
+                total_2[2] = 0.0f;
+                get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_2, test_func_right);
+                triangle_colors2[basee + 3] = total_2[2];
+                triangle_colors2[basee + 4] = total_2[1];
+                triangle_colors2[basee + 5] = total_2[0];
             }
         }
     }
