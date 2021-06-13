@@ -56,8 +56,8 @@ int main(int argc, const char** argv)
     // load image into opencv buffer
     cv::Mat img_temp, img;
     cv::Mat saliency_map;
-    // load_picture(img_temp, "apple2.jpg");
-    load_picture(img_temp, "lenna.png");
+    load_picture(img_temp, "apple2.jpg");
+    // load_picture(img_temp, "lenna.png");
     // load_picture(img_temp, "carrot2.png");
     cv::flip(img_temp, img, 0);
 
@@ -486,6 +486,41 @@ void update_triangle_colors(int num_triangles_x, int num_triangles_y, const cv::
         }
     }
 }
+void get_edge_points_box(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& edges, std::vector<double>& x_points_1, std::vector<double>& y_points_1, std::vector<double>& x_points_2, std::vector<double>& y_points_2)
+{
+    float top_right_x_pixels = bottom_left_x_pixels + width_triangle_pixels;
+    float top_right_y_pixels = bottom_left_y_pixels + height_triangle_pixels;
+
+    int y_start = std::floor(bottom_left_y_pixels);
+    int x_start = std::floor(bottom_left_x_pixels);
+    int y_width = std::floor(top_right_y_pixels) - y_start;
+    int x_width = std::floor(top_right_x_pixels) - x_start;
+
+    // loop through all pixels in box; add edge pixels to set of points
+    for (int y1 = y_start; y1 < std::floor(top_right_y_pixels); ++y1)
+    {
+        for (int x1 = x_start; x1 < std::floor(top_right_x_pixels); ++x1)
+        {
+            int val = (int)edges.at<unsigned char>(y1, x1);
+            if (val > 0)
+            {
+                float x2 = ((float)x1 - (float)x_start + 0.5f) / (float)x_width;
+                float y2 = ((float)y1 - (float)y_start + 0.5f) / (float)y_width;
+                float pos = x2 + y2;
+                if (pos <= 1.0f)
+                {
+                    x_points_1.push_back(x2);
+                    y_points_1.push_back(y2);
+                }
+                if (pos >= 1.0f)
+                {
+                    x_points_2.push_back(x2);
+                    y_points_2.push_back(y2);
+                }
+            }
+        }
+    }
+}
 
 void update_step_constant_color(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, const cv::Mat& edges, bool use_saliency, const float vertices[], float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[])
 {
@@ -505,48 +540,15 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
             float bottom_left_x_pixels = (float)(vertices[bottom_left * 6] * img.cols);
             float bottom_left_y_pixels = (float)(vertices[bottom_left * 6 + 1] * img.rows);
 
-            float top_right_x_pixels = bottom_left_x_pixels + width_triangle_pixels;
-            float top_right_y_pixels = bottom_left_y_pixels + height_triangle_pixels;
-
-            int y_start = std::floor(bottom_left_y_pixels);
-            int x_start = std::floor(bottom_left_x_pixels);
-            int y_width = std::floor(top_right_y_pixels) - y_start;
-            int x_width = std::floor(top_right_x_pixels) - x_start;
-
             // set of points for both triangles in the box
             std::vector<double> x_points_1;
             std::vector<double> y_points_1;
             std::vector<double> x_points_2;
             std::vector<double> y_points_2;
+            get_edge_points_box(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, edges, x_points_1, y_points_1, x_points_2, y_points_2);
 
-            // loop through all pixels in box; add edge pixels to set of points
-            for (int y1 = y_start; y1 < std::floor(top_right_y_pixels); ++y1)
-            {
-                for (int x1 = x_start; x1 < std::floor(top_right_x_pixels); ++x1)
-                {
-                    int val = (int)edges.at<unsigned char>(y1, x1);
-                    if (val > 0)
-                    {
-                        float x2 = ((float)x1 - (float)x_start + 0.5f) / (float)x_width;
-                        float y2 = ((float)y1 - (float)y_start + 0.5f) / (float)y_width;
-                        float pos = x2 + y2;
-                        if (pos <= 1.0f)
-                        {
-                            x_points_1.push_back(x2);
-                            y_points_1.push_back(y2);
-                        }
-                        if (pos >= 1.0f)
-                        {
-                            x_points_2.push_back(x2);
-                            y_points_2.push_back(y2);
-                        }
-                    }
-                }
-            }
             // std::copy(x_points_1.begin(), x_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
-            // std::copy(y_points_1.begin(), y_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
-            // std::cout << c0 << "\t" << c1 << "\n\n";
-            // if points.empty -> calculate straight line through points
+            // if !points.empty -> calculate straight line through points
             // else -> constant color
             float total_1[3] = {0.0, 0.0, 0.0};
             float total_2[3] = {0.0, 0.0, 0.0};
@@ -577,8 +579,8 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
                 {
                     float x_line = (float)x_points_1[0];
                     // test_func_left = [x_line, test_left_triangle](float x, float y) { return (test_left_triangle(x, y) && x <= x_line);};
-                    test_func_left = [x_line](float x, float y) { return (x + y <= 1.0f && x <= x_line);};
-                    test_func_right = [x_line](float x, float y) { return (x + y <= 1.0f && x >= x_line);};
+                    test_func_left = [test_left_triangle, x_line](float x, float y) { return (test_left_triangle(x, y) && x <= x_line);};
+                    test_func_right = [test_left_triangle, x_line](float x, float y) { return (test_left_triangle(x, y) && x >= x_line);};
 
                     variable_per_triangles[basee + 0] = x_line;
                     variable_per_triangles[basee + 1] = 1.0f + std::sqrt(std::pow(1.0f - x_line, 2.0f) * 2) / std::sqrt(2); // length side sqrt(2), y-intersection = 1 - x, lenght v1, intersection / total length side
@@ -622,8 +624,8 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
                     // float points_xx = points_y[0] - points_y[1];
                     // float points_yy = -points_x[0] + points_x[1];
 
-                    test_func_left = [points_x, points_y](float x, float y) { return (x + y <= 1.0f && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) < 0.0f);};
-                    test_func_right = [points_x, points_y](float x, float y) { return (x + y <= 1.0f && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) >= 0.0f);};
+                    test_func_left = [test_left_triangle, points_x, points_y](float x, float y) { return (test_left_triangle(x, y) && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) < 0.0f);};
+                    test_func_right = [test_left_triangle, points_x, points_y](float x, float y) { return (test_left_triangle(x, y) && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) >= 0.0f);};
                 }
 
                 get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_1, test_func_left);
@@ -661,8 +663,8 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
                 {
                     float x_line = (float)x_points_2[0];
                     // test_func_left = [x_line, test_left_triangle](float x, float y) { return (test_left_triangle(x, y) && x <= x_line);};
-                    test_func_left = [x_line](float x, float y) { return (x + y >= 1.0f && x <= x_line);};
-                    test_func_right = [x_line](float x, float y) { return (x + y >= 1.0f && x >= x_line);};
+                    test_func_left = [test_right_triangle, x_line](float x, float y) { return (test_right_triangle(x, y) && x <= x_line);};
+                    test_func_right = [test_right_triangle, x_line](float x, float y) { return (test_right_triangle(x, y) && x >= x_line);};
 
                     variable_per_triangles[basee + 3] = std::sqrt(std::pow(1.0f - x_line, 2.0f) * 2) / std::sqrt(2); // length side sqrt(2), y-intersection = 1 - x, lenght v1, intersection / total length side
                     variable_per_triangles[basee + 4] = 1.0f + x_line;
@@ -707,8 +709,8 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
                     // std::copy(x_points_1.begin(), x_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
                     variable_per_triangles[basee + 5] = 0.0f; // not used
 
-                    test_func_left = [points_x, points_y](float x, float y) { return (x + y >= 1.0f && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) < 0.0f);};
-                    test_func_right = [points_x, points_y](float x, float y) { return (x + y >= 1.0f && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) >= 0.0f);};
+                    test_func_left = [test_right_triangle, points_x, points_y](float x, float y) { return (test_right_triangle(x, y) && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) < 0.0f);};
+                    test_func_right = [test_right_triangle, points_x, points_y](float x, float y) { return (test_right_triangle(x, y) && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) >= 0.0f);};
                 }
 
                 get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_2, test_func_left);
