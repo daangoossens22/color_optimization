@@ -53,7 +53,6 @@ void update_triangle_colors(int num_triangles_x, int num_triangles_y, const cv::
 void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float triangle_colors1[]);
 void get_average_color(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float total[3], std::function<bool (float x, float y)> count_pixel);
 void update_bilinear_colors_opt(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[]);
-void update_bicubic_variables(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[]);
 void update_step_constant_color(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, const cv::Mat& edges, bool use_saliency, const float vertices[], int num_edge_detection_points, float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[]);
 
 int main(int argc, const char** argv)
@@ -61,7 +60,8 @@ int main(int argc, const char** argv)
     // load image into opencv buffer
     cv::Mat img_temp, img;
     cv::Mat saliency_map;
-    load_picture(img_temp, "apple2.jpg");
+    // load_picture(img_temp, "apple2.jpg");
+    load_picture(img_temp, "decarlo2.jpg");
     // load_picture(img_temp, "lenna.png");
     // load_picture(img_temp, "carrot2.png");
     cv::flip(img_temp, img, 0);
@@ -119,9 +119,10 @@ int main(int argc, const char** argv)
     bool use_saliency = true;
     int saliency_mode = 0;
     bool show_saliency_map = false;
-    int mode = 5;
+    int mode = 4;
     int num_edge_detection_points = 2;
-    int low_threshold = 130;
+    // int low_threshold = 130;
+    int low_threshold = 59;
     bool show_edge_map = false;
     ImVec4 vcolor1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
     ImVec4 vcolor2 = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
@@ -171,7 +172,7 @@ int main(int argc, const char** argv)
             ImGui::Checkbox("use saliency", &use_saliency);
             ImGui::Checkbox("show saliency map (close window by pressing any key)", &show_saliency_map);
 
-            ImGui::Combo("mode", &mode, "constant (avg)\0 constant (center)\0bilinear (no opt)\0bilinear (opt)\0bicubic\0step\0smooth step\0testing\0\0");
+            ImGui::Combo("mode", &mode, "constant (avg)\0 constant (center)\0bilinear (no opt)\0bilinear (opt)\0step (constant)\0step (linear)\0smooth step\0testing\0\0");
 
             ImGui::SliderInt("min # of edge detection points needed (step)", &num_edge_detection_points, 2, 20);
             ImGui::SliderInt("theshold edge detection", &low_threshold, 0, 160);
@@ -265,14 +266,21 @@ int main(int argc, const char** argv)
                     update_bilinear_colors_opt(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, vertex_colors);
                     break;
                 case 4:
-                    update_bicubic_variables(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, vertex_colors);
+                {
+                    cv::Mat edges;
+                    get_edges(img, edges, low_threshold);
+                    update_step_constant_color(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, edges, use_saliency, vertices, num_edge_detection_points, triangle_colors1, triangle_colors2, variable_per_triangles);
+                    update_vertex_colors(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, vertex_colors);
                     break;
+                }
                 case 5:
+                {
                     cv::Mat edges;
                     get_edges(img, edges, low_threshold);
 
                     update_step_constant_color(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, edges, use_saliency, vertices, num_edge_detection_points, triangle_colors1, triangle_colors2, variable_per_triangles);
                     break;
+                }
             }
         }
 
@@ -717,14 +725,6 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
             compute_line_and_update_colors(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, &triangle_colors1[basee + 3], &triangle_colors2[basee + 3], &variable_per_triangles[basee + 3], num_edge_detection_points, test_right_triangle, false, x_points_2, y_points_2);
         }
     }
-}
-
-// -----------------------------------------------------------------------------
-// TODO
-void update_bicubic_variables(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[])
-{
-    update_vertex_colors(num_triangles_x, num_triangles_y, img, saliency_map, use_saliency, vertices, vertex_colors);
-    // TODO
 }
 
 

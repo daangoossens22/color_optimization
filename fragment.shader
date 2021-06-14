@@ -10,8 +10,8 @@ const int constant_color_avg = 0;
 const int constant_color_center = 1;
 const int bilinear_interpolation_no_opt = 2;
 const int bilinear_interpolation_opt = 3;
-const int bicubic_interpolation = 4;
-const int step_cutoff = 5;
+const int step_constant = 4;
+const int step_bilinear = 5;
 const int step_smooth = 6;
 const int testing = 7;
 
@@ -69,23 +69,16 @@ void main()
     case constant_color_center:
       color = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
       break;
-
     // ---------------------------------------------------------------------
     case bilinear_interpolation_no_opt:
     case bilinear_interpolation_opt:
       color = coord.x * colours[0] + coord.y * colours[1] + coord.z * colours[2];
       break;
-
     // ---------------------------------------------------------------------
-    case bicubic_interpolation:
-      break;
-    // ---------------------------------------------------------------------
-    case step_cutoff:
+    case step_constant:
       {
         float point1 = var3[(gl_PrimitiveID * 3) + 0];
         float point2 = var3[(gl_PrimitiveID * 3) + 1];
-        // float point1 = weight.x;
-        // float point2 = weight.y;
 
         vec2 p1 = float_to_coor(point1);
         vec2 p2 = float_to_coor(point2);
@@ -97,7 +90,6 @@ void main()
 
         // float stepp = step(0.0f, result);
         // color = (1.0f - stepp) * vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]) + stepp * vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
-
         if (result < 0.0f)
         {
           color = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
@@ -108,8 +100,39 @@ void main()
         }
       }
       break;
-
     // ---------------------------------------------------------------------
+    case step_bilinear:
+      {
+        float point1 = var3[(gl_PrimitiveID * 3) + 0];
+        float point2 = var3[(gl_PrimitiveID * 3) + 1];
+
+        vec2 p1 = float_to_coor(point1);
+        vec2 p2 = float_to_coor(point2);
+
+        vec2 dir1 = p2 - p1;
+        dir1 = vec2(dir1.y, -dir1.x); // rotate 90 degrees
+        vec2 dir2 = normal_coor.xy - p1;
+        float result = dot(dir1, dir2); // vecors don't need to be normalized -> only need to know the sign
+
+        // float stepp = step(0.0f, result);
+        // color = (1.0f - stepp) * vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]) + stepp * vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
+        if (!(point1 > -0.1f && point1 <= 1.0f && point2 > -0.1f && point2 <= 1.0f))
+        {
+          if (result < 0.0f)
+          {
+            color = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
+          }
+          else
+          {
+            color = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
+          }
+        }
+        else
+        {
+          color = coord.x * colours[0] + coord.y * colours[1] + coord.z * colours[2];
+        }
+      }
+      break;
     case step_smooth:
       {
         vec2 dir1 = weight.zw - weight.xy;
@@ -123,7 +146,6 @@ void main()
         else if (length(normal_coor.xy - weight.zw) < 0.01) { color = colours[2]; }
       }
       break;
-
     // ---------------------------------------------------------------------
     case testing:
     {
@@ -151,7 +173,6 @@ void main()
     }
     break;
   }
-
 
   FragColor = vec4(color, 1.0);
 }
