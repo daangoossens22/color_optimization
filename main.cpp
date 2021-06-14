@@ -61,8 +61,9 @@ int main(int argc, const char** argv)
     cv::Mat img_temp, img;
     cv::Mat saliency_map;
     // load_picture(img_temp, "apple2.jpg");
-    load_picture(img_temp, "decarlo2.jpg");
+    // load_picture(img_temp, "decarlo2.jpg");
     // load_picture(img_temp, "lenna.png");
+    load_picture(img_temp, "Octocat.jpg");
     // load_picture(img_temp, "carrot2.png");
     cv::flip(img_temp, img, 0);
 
@@ -938,22 +939,26 @@ void update_saliency_map(const cv::Mat& img, cv::Mat& saliency_map, int saliency
             break;
         }
     }
-    // cv::imshow("saliency map", saliency_map);
-    // cv::waitKey(0);
-    // std::cout << saliency_map << std::endl;
 }
 
 void get_edges(const cv::Mat& img, cv::Mat& edges, int low_threshold)
 {
+    // cv::Mat img_gray;
+    // const int ratios = 3;
+    // const int kernel_size = 3;
+    // cv::cvtColor(img, img_gray, cv::COLOR_BGR2GRAY);
+    // cv::blur(img_gray, edges, cv::Size(3, 3));
+    // cv::Canny(edges, edges, low_threshold, low_threshold * ratios, kernel_size);
+
+    cv::Mat img_filtered;
     cv::Mat img_gray;
+    cv::bilateralFilter(img, img_filtered, 9, 75, 75);
+    cv::medianBlur(img_filtered, img_filtered, 5);
+    cv::cvtColor(img_filtered, edges, cv::COLOR_BGR2GRAY);
+    // cv::blur(img_gray_filtered, edges, cv::Size(3, 3));
     const int ratios = 3;
     const int kernel_size = 3;
-    cv::cvtColor(img, img_gray, cv::COLOR_BGR2GRAY);
-    cv::blur(img_gray, edges, cv::Size(3, 3));
     cv::Canny(edges, edges, low_threshold, low_threshold * ratios, kernel_size);
-    // cv::imshow("test", edges);
-    // cv::waitKey(0);
-    // cv::destroyAllWindows();
 }
 
 // -----------------------------------------------------------------------------
