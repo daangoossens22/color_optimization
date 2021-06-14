@@ -28,10 +28,15 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <FreeImage.h>
+
 constexpr int max_triangles_per_side = 52; // all the nvidia uniform buffer can handle
 constexpr float saliency_bias = 0.1;
 constexpr int points_tested_per_side = 4;
 enum saliency_method { fine_grained, spectral_residual };
+
+constexpr int width = 1600;
+constexpr int height = 900;
 
 // function pointers for function that are at the bottom
 static void glfw_error_callback(int error, const char* description);
@@ -125,6 +130,7 @@ int main(int argc, const char** argv)
     float weighty = 0.0f;
     float weightz = 0.0f;
     float weightw = 0.0f;
+    bool save_image = false;
 
     // for checking if recalculation is needed
     int old_mode = -1;
@@ -179,12 +185,27 @@ int main(int argc, const char** argv)
             ImGui::SliderFloat("float 3", &weightz, 0.0f, 3.0f);
             ImGui::SliderFloat("float 4", &weightw, 0.0f, 3.0f);
 
+            ImGui::Checkbox("save image", &save_image);
+
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
             ImGui::End();
         }
         if (square_grid) { num_triangles_dimensions[1] = num_triangles_dimensions[0]; }
         // demo window that displays most dear imgui functionality
         if (show_demo_window) { ImGui::ShowDemoWindow(&show_demo_window); }
+
+        if (save_image)
+        {
+            GLubyte* pixels = new GLubyte[3 * height * height];
+            glReadPixels(width - height, 0, height, height, GL_BGR, GL_UNSIGNED_BYTE, pixels);
+
+            FIBITMAP* image = FreeImage_ConvertFromRawBits(pixels, height, height, 3 * height, 24, 0x0000FF, 0x00FF00, 0xFF0000, false);
+            FreeImage_Save(FIF_PNG, image, "output_image.png", 0);
+            FreeImage_Unload(image);
+            delete[] pixels;
+
+            save_image = false;
+        }
 
 
         // -----------------------------------------------------------------------------
@@ -968,7 +989,7 @@ GLFWwindow* glfw_setup()
     glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE);
 
     // Create window with graphics context
-    GLFWwindow* window = glfwCreateWindow(1600, 900, "Coloring of Triangulations of an Image", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(width, height, "Coloring of Triangulations of an Image", NULL, NULL);
     if (window == NULL)
     {
         glfwTerminate();

@@ -95,6 +95,9 @@ void main()
         vec2 dir2 = normal_coor.xy - p1;
         float result = dot(dir1, dir2); // vecors don't need to be normalized -> only need to know the sign
 
+        // float stepp = step(0.0f, result);
+        // color = (1.0f - stepp) * vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]) + stepp * vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
+
         if (result < 0.0f)
         {
           color = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
