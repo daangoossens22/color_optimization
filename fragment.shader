@@ -129,38 +129,32 @@ void main()
       }
       break;
     // ---------------------------------------------------------------------
-    case step_bilinear:
-      {
-        float point1 = var3[(gl_PrimitiveID * 3) + 0];
-        float point2 = var3[(gl_PrimitiveID * 3) + 1];
+    // case step_bilinear:
+    //   {
+    //     float c0 = var3[(gl_PrimitiveID * 3) + 0];
+    //     float c1 = var3[(gl_PrimitiveID * 3) + 1];
+    //     float c2 = var3[(gl_PrimitiveID * 3) + 2];
 
-        vec2 p1 = float_to_coor(point1);
-        vec2 p2 = float_to_coor(point2);
+    //     vec3 color1 = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
+    //     vec3 color2 = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
 
-        vec2 dir1 = p2 - p1;
-        dir1 = vec2(dir1.y, -dir1.x); // rotate 90 degrees
-        vec2 dir2 = normal_coor.xy - p1;
-        float result = dot(dir1, dir2); // vecors don't need to be normalized -> only need to know the sign
-
-        // float stepp = step(0.0f, result);
-        // color = (1.0f - stepp) * vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]) + stepp * vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
-        if (!(point1 > -0.1f && point1 <= 1.0f && point2 > -0.1f && point2 <= 1.0f))
-        {
-          if (result < 0.0f)
-          {
-            color = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
-          }
-          else
-          {
-            color = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
-          }
-        }
-        else
-        {
-          color = coord.x * colours[0] + coord.y * colours[1] + coord.z * colours[2];
-        }
-      }
-      break;
+    //     if (!(point1 > -0.1f && point1 <= 1.0f && point2 > -0.1f && point2 <= 1.0f))
+    //     {
+    //       if (result < 0.0f)
+    //       {
+    //         color = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
+    //       }
+    //       else
+    //       {
+    //         color = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
+    //       }
+    //     }
+    //     else
+    //     {
+    //       color = coord.x * colours[0] + coord.y * colours[1] + coord.z * colours[2];
+    //     }
+    //   }
+    //   break;
     case quadratic_step:
       {
         // change to take the quadratic polynomial -> take derivative vector -> take dot product

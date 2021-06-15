@@ -62,6 +62,7 @@ int main(int argc, const char** argv)
     // load image into opencv buffer
     cv::Mat img_temp, img;
     cv::Mat saliency_map;
+    cv::Mat edges;
 
     if (argc != 2)
     { 
@@ -267,6 +268,7 @@ int main(int argc, const char** argv)
             old_low_threshold = low_threshold;
 
             update_saliency_map(img, saliency_map, saliency_mode);
+            get_edges(img, edges, low_threshold);
 
             switch (mode)
             {
@@ -283,29 +285,15 @@ int main(int argc, const char** argv)
                     update_bilinear_colors_opt(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, vertex_colors);
                     break;
                 case 4:
-                {
-                    cv::Mat edges;
-                    get_edges(img, edges, low_threshold);
                     update_step_constant_color(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, edges, use_saliency, vertices, num_edge_detection_points, triangle_colors1, triangle_colors2, variable_per_triangles);
                     update_vertex_colors(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, vertex_colors);
                     break;
-                }
                 case 5:
-                {
-                    cv::Mat edges;
-                    get_edges(img, edges, low_threshold);
-
                     update_step_constant_color(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, edges, use_saliency, vertices, num_edge_detection_points, triangle_colors1, triangle_colors2, variable_per_triangles);
                     break;
-                }
                 case 6:
-                {
-                    cv::Mat edges;
-                    get_edges(img, edges, low_threshold);
-
                     update_step_quadratic_color(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, edges, use_saliency, vertices, num_edge_detection_points, triangle_colors1, triangle_colors2, variable_per_triangles);
                     break;
-                }
             }
         }
 
