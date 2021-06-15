@@ -20,6 +20,7 @@
 #include <Eigen/SVD>
 #include <Eigen/QR>
 #include <gsl/gsl_fit.h>
+#include <gsl/gsl_multifit.h>
 
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
@@ -54,15 +55,30 @@ void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::
 void get_average_color(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float total[3], std::function<bool (float x, float y)> count_pixel);
 void update_bilinear_colors_opt(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[]);
 void update_step_constant_color(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, const cv::Mat& edges, bool use_saliency, const float vertices[], int num_edge_detection_points, float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[]);
+void update_step_quadratic_color(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, const cv::Mat& edges, bool use_saliency, const float vertices[], int num_edge_detection_points, float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[]);
 
 int main(int argc, const char** argv)
 {
     // load image into opencv buffer
     cv::Mat img_temp, img;
     cv::Mat saliency_map;
+
+    if (argc != 2)
+    { 
+        std::cout << "Incorrect arguments. Should be of the form {program_name} {image_location}" << std::endl;
+        return 1;
+    }
+    std::string image_location = argv[1];
+    std::ifstream iimage(image_location);
+    if (!iimage)
+    {
+        std::cout << "File path: " << image_location << " does not exist";
+        return 2;
+    }
+    load_picture(img_temp, image_location);
     // load_picture(img_temp, "apple2.jpg");
     // load_picture(img_temp, "decarlo2.jpg");
-    load_picture(img_temp, "lenna.png");
+    // load_picture(img_temp, "lenna.png");
     // load_picture(img_temp, "Octocat.jpg");
     // load_picture(img_temp, "carrot2.png");
     cv::flip(img_temp, img, 0);
@@ -121,7 +137,7 @@ int main(int argc, const char** argv)
     int saliency_mode = 0;
     bool show_saliency_map = false;
     int mode = 4;
-    int num_edge_detection_points = 2;
+    int num_edge_detection_points = 4;
     // int low_threshold = 130;
     int low_threshold = 59;
     bool show_edge_map = false;
@@ -173,7 +189,7 @@ int main(int argc, const char** argv)
             ImGui::Checkbox("use saliency", &use_saliency);
             ImGui::Checkbox("show saliency map (close window by pressing any key)", &show_saliency_map);
 
-            ImGui::Combo("mode", &mode, "constant (avg)\0 constant (center)\0bilinear (no opt)\0bilinear (opt)\0step (constant)\0step (linear)\0smooth step\0testing\0\0");
+            ImGui::Combo("mode", &mode, "constant (avg)\0 constant (center)\0bilinear (no opt)\0bilinear (opt)\0step (constant)\0step (linear)\0quadratic step\0smooth step\0testing\0\0");
 
             ImGui::SliderInt("min # of edge detection points needed (step)", &num_edge_detection_points, 2, 20);
             ImGui::SliderInt("theshold edge detection", &low_threshold, 0, 160);
@@ -280,6 +296,14 @@ int main(int argc, const char** argv)
                     get_edges(img, edges, low_threshold);
 
                     update_step_constant_color(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, edges, use_saliency, vertices, num_edge_detection_points, triangle_colors1, triangle_colors2, variable_per_triangles);
+                    break;
+                }
+                case 6:
+                {
+                    cv::Mat edges;
+                    get_edges(img, edges, low_threshold);
+
+                    update_step_quadratic_color(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, edges, use_saliency, vertices, num_edge_detection_points, triangle_colors1, triangle_colors2, variable_per_triangles);
                     break;
                 }
             }
@@ -558,7 +582,6 @@ void get_edge_points_box(float bottom_left_x_pixels, float bottom_left_y_pixels,
 }
 void compute_line_and_update_colors(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[], int num_edge_detection_points, std::function<bool (float x, float y)> which_triangle, bool left_triangle, std::vector<double>& x_points, std::vector<double>& y_points)
 {
-    auto compute_value_diagonal = [](float x_line) { return std::sqrt(std::pow(1.0f - x_line, 2.0f) * 2) / std::sqrt(2); }; // length side sqrt(2), y-intersection = 1 - x, lenght v1, intersection / total length side
     float total[3] = {0.0, 0.0, 0.0};
     float total_2[3] = {0.0, 0.0, 0.0};
     if ((int)x_points.size() < num_edge_detection_points)
@@ -583,95 +606,114 @@ void compute_line_and_update_colors(float bottom_left_x_pixels, float bottom_lef
         gsl_fit_linear(&x_points[0], 1, &y_points[0], 1, x_points.size(), &c0, &c1, &cov00, &cov01, &cov11, &sumsq);
         std::function<bool (float x, float y)> test_func_left;
         std::function<bool (float x, float y)> test_func_right;
-        // if the estimated line is vertical (i.e. slope is inf or in this case it returns nan)
         if (std::isnan(c0) || std::isnan(c1))
         {
             float x_line = (float)x_points[0];
             test_func_left = [which_triangle, x_line](float x, float y) { return (which_triangle(x, y) && x <= x_line);};
             test_func_right = [which_triangle, x_line](float x, float y) { return (which_triangle(x, y) && x >= x_line);};
 
-            variable_per_triangles[0] = (left_triangle) ? x_line : compute_value_diagonal(x_line);
-            variable_per_triangles[1] = (left_triangle) ? 1.0f + compute_value_diagonal(x_line) : 1.0f + x_line;
-            variable_per_triangles[2] = 0.0f; // not used
-
+            variable_per_triangles[0] = x_line;
+            variable_per_triangles[1] = 0.0f;
+            variable_per_triangles[2] = 1.0f; // tell to shader that this is a vertical line
         }
-        // if it is a non-vertical line
         else
         {
-            int indexx = 0;
-            double points_x[2] = {0.0f, 0.0f};
-            double points_y[2] = {0.0f, 0.0f};
-            if (left_triangle)
-            {
-                if (c1 != 0.0f)
-                {
-                    double intersect_x = -c0 / c1;
-                    if (intersect_x >= 0.0 && intersect_x <= 1.0)
-                    { 
-                        variable_per_triangles[indexx] = intersect_x; 
-                        points_x[indexx] = intersect_x;
-                        points_y[indexx] = 0.0f;
-                        ++indexx;
-                    }
-                    
-                }
-                double intersect_y = c0;
-                if (!(intersect_y >= 0.0 && intersect_y <= 1.0) || indexx == 0)
-                { 
-                    float x_line = (1.0f - c0) / (1.0f + c1);
-                    variable_per_triangles[indexx] = 1.0f + compute_value_diagonal(x_line);
-                    points_x[indexx] = x_line;
-                    points_y[indexx] = 1 - x_line;
-                    ++indexx;
-                }
-                if (indexx < 2)
-                {
-                    variable_per_triangles[indexx] = 2.0f + (1.0f - intersect_y); 
-                    points_x[indexx] = 0.0f;
-                    points_y[indexx] = intersect_y;
-                    ++indexx;
-                }
-            }
-            else
-            {
-                if (c1 != -1.0f)
-                { 
-                    float x_line = (1.0f - c0) / (1.0f + c1);
-                    if (x_line >= 0.0f && x_line <= 1.0f)
-                    {
-                        variable_per_triangles[indexx] = compute_value_diagonal(x_line);
-                        points_x[indexx] = x_line;
-                        points_y[indexx] = 1 - x_line;
-                        ++indexx;
-                    }
-                }
-                if (c1 != 0.0f) // not horizontal 
-                {
-                    double intersect_top_x = (1.0f - c0) / c1;
-                    if (intersect_top_x >= 0.0 && intersect_top_x <= 1.0)
-                    { 
-                        variable_per_triangles[indexx] = 1.0f + intersect_top_x; 
-                        points_x[indexx] = intersect_top_x;
-                        points_y[indexx] = 1.0f;
-                        ++indexx;
-                    }
-                }
-                if (indexx < 2)
-                {
-                    double intersect_right_y = c0 + c1;
-                    variable_per_triangles[indexx] = 2.0f + (1.0f - intersect_right_y); 
-                    points_x[indexx] = 1.0f;
-                    points_y[indexx] = intersect_right_y;
-                    ++indexx;
-                }
-            }
+            test_func_left = [which_triangle, c0, c1](float x, float y) { return (which_triangle(x, y) && c0 + c1 * x >= y);};
+            test_func_right = [which_triangle, c0, c1](float x, float y) { return (which_triangle(x, y) && c0 + c1 * x <= y);};
 
-            variable_per_triangles[2] = 0.0f; // not used
-
-            // calculate the dot product with the rotated vector just like in the fragment shader code
-            test_func_left = [which_triangle, points_x, points_y](float x, float y) { return (which_triangle(x, y) && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) <= 0.0f);};
-            test_func_right = [which_triangle, points_x, points_y](float x, float y) { return (which_triangle(x, y) && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) >= 0.0f);};
+            variable_per_triangles[0] = c0;
+            variable_per_triangles[1] = c1;
+            variable_per_triangles[2] = 0.0f; // tell to shader that this is not a vertical line
         }
+
+        get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total, test_func_left);
+        get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_2, test_func_right);
+        // if there is not enough pixels in either area, then just take the color of the other area effectively makin the triangle 1 color again
+        if (std::isnan(total[0])) { std::copy(total_2, total_2+3, total); }
+        if (std::isnan(total_2[0])) { std::copy(total, total+3, total_2); }
+        triangle_colors1[0] = total[2];
+        triangle_colors1[1] = total[1];
+        triangle_colors1[2] = total[0];
+        triangle_colors2[0] = total_2[2];
+        triangle_colors2[1] = total_2[1];
+        triangle_colors2[2] = total_2[0];
+    }
+}
+
+void compute_quadratic_and_update_colors(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[], int num_edge_detection_points, std::function<bool (float x, float y)> which_triangle, bool left_triangle, std::vector<double>& x_points, std::vector<double>& y_points)
+{
+    float total[3] = {0.0, 0.0, 0.0};
+    float total_2[3] = {0.0, 0.0, 0.0};
+    if ((int)x_points.size() < 10)
+    {
+        // not enough points -> don't split the triangle and make it a constant color
+        get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total, which_triangle);
+        triangle_colors1[0] = total[2];
+        triangle_colors1[1] = total[1];
+        triangle_colors1[2] = total[0];
+
+        triangle_colors2[0] = total[2];
+        triangle_colors2[1] = total[1];
+        triangle_colors2[2] = total[0];
+
+        variable_per_triangles[0] = 0.0f;
+        variable_per_triangles[1] = 0.0f;
+        variable_per_triangles[2] = 0.0f; // not used
+    }
+    else
+    {
+        int n = (int)x_points.size();
+        double chisq;
+        gsl_matrix *X, *cov;
+        gsl_vector *y, *c; // *w removed
+
+        X = gsl_matrix_alloc(n, 3);
+        y = gsl_vector_alloc(n);
+        // w = gsl_vector_alloc(n);
+        c = gsl_vector_alloc(3);
+        cov = gsl_matrix_alloc(3, 3);
+
+        for (int i = 0; i < n; ++i)
+        {
+            gsl_matrix_set(X, i, 0, 1.0);
+            gsl_matrix_set(X, i, 1, x_points[i]);
+            gsl_matrix_set(X, i, 2, x_points[i] * x_points[i]);
+
+            gsl_vector_set(y, i, y_points[i]);
+            // gsl_vector_set(w, i, 1.0);
+        }
+        gsl_multifit_linear_workspace* work = gsl_multifit_linear_alloc(n, 3);
+        // gsl_multifit_wlinear(X, w, y, c, cov, &chisq, work);
+        gsl_multifit_linear(X, y, c, cov, &chisq, work);
+
+        // y = c0 + c1*x + c2*x*x
+        float c0 = (float)gsl_vector_get(c, (0));
+        float c1 = (float)gsl_vector_get(c, (1));
+        float c2 = (float)gsl_vector_get(c, (2));
+
+        gsl_multifit_linear_free(work);
+        gsl_matrix_free(X);
+        gsl_vector_free(y);
+        // gsl_vector_free(w);
+        gsl_vector_free(c);
+        gsl_matrix_free(cov);
+
+        if (std::isnan(c0) || std::isnan(c1) || std::isnan(c2))
+        {
+            std::copy(x_points.begin(), x_points.end(), std::ostream_iterator<float>(std::cout, " "));
+            std::copy(y_points.begin(), y_points.end(), std::ostream_iterator<float>(std::cout, " "));
+            std::cout << std::endl;
+        }
+
+        std::function<bool (float x, float y)> test_func_left;
+        std::function<bool (float x, float y)> test_func_right;
+
+        test_func_left = [which_triangle, c0, c1, c2](float x, float y) { return (which_triangle(x, y) && c0 + (c1 * x) + (c2 * x * x) >= y);};
+        test_func_right = [which_triangle, c0, c1, c2](float x, float y) { return (which_triangle(x, y) && c0 + (c1 * x)  + (c2 * x * x) <= y);};
+
+        variable_per_triangles[0] = c0;
+        variable_per_triangles[1] = c1;
+        variable_per_triangles[2] = c2;
 
         get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total, test_func_left);
         get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_2, test_func_right);
@@ -722,6 +764,45 @@ void update_step_constant_color(int num_triangles_x, int num_triangles_y, const 
             // there are not enough points to calculate a line from
             compute_line_and_update_colors(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, &triangle_colors1[basee], &triangle_colors2[basee], &variable_per_triangles[basee], num_edge_detection_points, test_left_triangle, true, x_points_1, y_points_1);
             compute_line_and_update_colors(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, &triangle_colors1[basee + 3], &triangle_colors2[basee + 3], &variable_per_triangles[basee + 3], num_edge_detection_points, test_right_triangle, false, x_points_2, y_points_2);
+        }
+    }
+}
+
+void update_step_quadratic_color(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, const cv::Mat& edges, bool use_saliency, const float vertices[], int num_edge_detection_points, float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[])
+{
+    int x_max = num_triangles_x;
+    int y_max = num_triangles_y;
+    float width_triangle_pixels = (float)img.cols / (float)x_max;
+    float height_triangle_pixels = (float)img.rows / (float)y_max;
+
+    for (int y = 0; y < y_max; y++)
+    {
+        for (int x = 0; x < x_max; x++)
+        {
+            // (x_max + 1) becuase the rightmost vertices are already tested in the previous box
+            unsigned int bottom_left = (x_max + 1) * y + x;
+
+            // top left = (0, 0), top right = (0, img.cols - 1), bottom left = (img.rows - 1, 0)
+            float bottom_left_x_pixels = (float)(vertices[bottom_left * 6] * img.cols);
+            float bottom_left_y_pixels = (float)(vertices[bottom_left * 6 + 1] * img.rows);
+
+            // set of points for both triangles in the box
+            std::vector<double> x_points_1;
+            std::vector<double> y_points_1;
+            std::vector<double> x_points_2;
+            std::vector<double> y_points_2;
+            get_edge_points_box(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, edges, x_points_1, y_points_1, x_points_2, y_points_2);
+
+            // std::copy(x_points_1.begin(), x_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
+            // if !points.empty -> calculate straight line through points
+            // else -> constant color
+
+            int basee = (x + (y * x_max)) * 6;
+            bool (*test_left_triangle)(float, float) = [](float x, float y) {return x + y <= 1.0f;};
+            bool (*test_right_triangle)(float, float) = [](float x, float y) {return x + y >= 1.0f;};
+            // there are not enough points to calculate a line from
+            compute_quadratic_and_update_colors(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, &triangle_colors1[basee], &triangle_colors2[basee], &variable_per_triangles[basee], num_edge_detection_points, test_left_triangle, true, x_points_1, y_points_1);
+            compute_quadratic_and_update_colors(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, &triangle_colors1[basee + 3], &triangle_colors2[basee + 3], &variable_per_triangles[basee + 3], num_edge_detection_points, test_right_triangle, false, x_points_2, y_points_2);
         }
     }
 }

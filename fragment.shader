@@ -12,8 +12,9 @@ const int bilinear_interpolation_no_opt = 2;
 const int bilinear_interpolation_opt = 3;
 const int step_constant = 4;
 const int step_bilinear = 5;
-const int step_smooth = 6;
-const int testing = 7;
+const int quadratic_step = 6;
+const int step_smooth = 7;
+const int testing = 8;
 
 const int triangles_per_side = 52;
 
@@ -61,6 +62,24 @@ void main()
 {
   vec3 color = vec3(0.0, 0.0, 0.0);
   vec3 normal_coor = coord.x * vert[0] + coord.y * vert[1] + coord.z * vert[2];
+  vec2 origin_coor = vec2(0.0f, 0.0f);
+  float length_x = 0.0f;
+  float length_y = 0.0f;
+  if (vert[0].x < vert[1].x)
+  {
+    origin_coor = vert[0].xy;
+    length_x = length(vert[1].xy - origin_coor.xy);
+    length_y = length(vert[2].xy - origin_coor.xy);
+  }
+  else
+  {
+    origin_coor = vec2(vert[1].x, vert[0].y);
+    length_x = length(vert[0].xy - origin_coor.xy);
+    length_y = length(vert[1].xy - origin_coor.xy);
+  }
+  vec2 normal_coord2 = vec2(normal_coor.xy - origin_coor);
+  normal_coord2.x = normal_coord2.x / length_x;
+  normal_coord2.y = normal_coord2.y / length_y;
 
   // set output color of pixel according to which coloring mode is selected
   switch (mode)
@@ -77,26 +96,35 @@ void main()
     // ---------------------------------------------------------------------
     case step_constant:
       {
-        float point1 = var3[(gl_PrimitiveID * 3) + 0];
-        float point2 = var3[(gl_PrimitiveID * 3) + 1];
+        float c0 = var3[(gl_PrimitiveID * 3) + 0];
+        float c1 = var3[(gl_PrimitiveID * 3) + 1];
+        float c2 = var3[(gl_PrimitiveID * 3) + 2];
 
-        vec2 p1 = float_to_coor(point1);
-        vec2 p2 = float_to_coor(point2);
+        vec3 color1 = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
+        vec3 color2 = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
 
-        vec2 dir1 = p2 - p1;
-        dir1 = vec2(dir1.y, -dir1.x); // rotate 90 degrees
-        vec2 dir2 = normal_coor.xy - p1;
-        float result = dot(dir1, dir2); // vecors don't need to be normalized -> only need to know the sign
-
-        // float stepp = step(0.0f, result);
-        // color = (1.0f - stepp) * vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]) + stepp * vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
-        if (result < 0.0f)
+        // vertical line (inf slope)
+        if (c2 >= 0.5f && c2 <= 1.5f)
         {
-          color = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
+          if (normal_coord2.x < c0)
+          {
+            color = color1;
+          }
+          else
+          {
+            color = color2;
+          }
         }
         else
         {
-          color = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
+          if (normal_coord2.x * c1 + c0 > normal_coord2.y)
+          {
+            color = color1;
+          }
+          else
+          {
+            color = color2;
+          }
         }
       }
       break;
@@ -130,6 +158,26 @@ void main()
         else
         {
           color = coord.x * colours[0] + coord.y * colours[1] + coord.z * colours[2];
+        }
+      }
+      break;
+    case quadratic_step:
+      {
+        // change to take the quadratic polynomial -> take derivative vector -> take dot product
+        float c0 = var3[(gl_PrimitiveID * 3) + 0];
+        float c1 = var3[(gl_PrimitiveID * 3) + 1];
+        float c2 = var3[(gl_PrimitiveID * 3) + 2];
+
+        vec3 color1 = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
+        vec3 color2 = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
+
+        if (normal_coord2.x * normal_coord2.x * c2 + normal_coord2.x * c1 + c0 >= normal_coord2.y)
+        {
+          color = color1;
+        }
+        else
+        {
+          color = color2;
         }
       }
       break;

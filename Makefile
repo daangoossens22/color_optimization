@@ -120,7 +120,7 @@ all: $(EXE)
 $(EXE): $(OBJS)
 	$(CXX) -o $@ $^ $(CXXFLAGS) $(LIBS)
 	rm -f $(OBJS) imgui.ini
-	./$(EXE)
+	./$(EXE) "apple2.jpg"
 
 clean:
 	rm -f $(EXE) $(OBJS)
