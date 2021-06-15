@@ -62,8 +62,8 @@ int main(int argc, const char** argv)
     cv::Mat saliency_map;
     // load_picture(img_temp, "apple2.jpg");
     // load_picture(img_temp, "decarlo2.jpg");
-    // load_picture(img_temp, "lenna.png");
-    load_picture(img_temp, "Octocat.jpg");
+    load_picture(img_temp, "lenna.png");
+    // load_picture(img_temp, "Octocat.jpg");
     // load_picture(img_temp, "carrot2.png");
     cv::flip(img_temp, img, 0);
 
@@ -560,6 +560,7 @@ void compute_line_and_update_colors(float bottom_left_x_pixels, float bottom_lef
 {
     auto compute_value_diagonal = [](float x_line) { return std::sqrt(std::pow(1.0f - x_line, 2.0f) * 2) / std::sqrt(2); }; // length side sqrt(2), y-intersection = 1 - x, lenght v1, intersection / total length side
     float total[3] = {0.0, 0.0, 0.0};
+    float total_2[3] = {0.0, 0.0, 0.0};
     if ((int)x_points.size() < num_edge_detection_points)
     {
         // not enough points -> don't split the triangle and make it a constant color
@@ -627,7 +628,6 @@ void compute_line_and_update_colors(float bottom_left_x_pixels, float bottom_lef
                 {
                     variable_per_triangles[indexx] = 2.0f + (1.0f - intersect_y); 
                     points_x[indexx] = 0.0f;
-                    // points_y[indexx] = 1.0f - intersect_y;
                     points_y[indexx] = intersect_y;
                     ++indexx;
                 }
@@ -661,8 +661,7 @@ void compute_line_and_update_colors(float bottom_left_x_pixels, float bottom_lef
                     double intersect_right_y = c0 + c1;
                     variable_per_triangles[indexx] = 2.0f + (1.0f - intersect_right_y); 
                     points_x[indexx] = 1.0f;
-                    // points_y[indexx] = 1.0f - intersect_right_y; // TODO should this be withous 1.0f -
-                    points_y[indexx] = intersect_right_y; // TODO should this be withous 1.0f -
+                    points_y[indexx] = intersect_right_y;
                     ++indexx;
                 }
             }
@@ -670,22 +669,21 @@ void compute_line_and_update_colors(float bottom_left_x_pixels, float bottom_lef
             variable_per_triangles[2] = 0.0f; // not used
 
             // calculate the dot product with the rotated vector just like in the fragment shader code
-            test_func_left = [which_triangle, points_x, points_y](float x, float y) { return (which_triangle(x, y) && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) < 0.0f);};
+            test_func_left = [which_triangle, points_x, points_y](float x, float y) { return (which_triangle(x, y) && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) <= 0.0f);};
             test_func_right = [which_triangle, points_x, points_y](float x, float y) { return (which_triangle(x, y) && ((x - points_x[0]) * (points_y[1] - points_y[0])) + ((y - points_y[0]) * (points_x[0] - points_x[1])) >= 0.0f);};
         }
 
         get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total, test_func_left);
+        get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total_2, test_func_right);
+        // if there is not enough pixels in either area, then just take the color of the other area effectively makin the triangle 1 color again
+        if (std::isnan(total[0])) { std::copy(total_2, total_2+3, total); }
+        if (std::isnan(total_2[0])) { std::copy(total, total+3, total_2); }
         triangle_colors1[0] = total[2];
         triangle_colors1[1] = total[1];
         triangle_colors1[2] = total[0];
-
-        total[0] = 0.0f;
-        total[1] = 0.0f;
-        total[2] = 0.0f;
-        get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, use_saliency, total, test_func_right);
-        triangle_colors2[0] = total[2];
-        triangle_colors2[1] = total[1];
-        triangle_colors2[2] = total[0];
+        triangle_colors2[0] = total_2[2];
+        triangle_colors2[1] = total_2[1];
+        triangle_colors2[2] = total_2[0];
     }
 }
 
