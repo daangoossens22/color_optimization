@@ -20,12 +20,12 @@ else:
         result2 = cv2.resize(result, (w_min, h_min), interpolation = cv2.INTER_AREA)
 
     diff = cv2.absdiff(original2, result2)
-    mse = diff^2
+    mse = diff * diff
     cv2.imshow('original', original2)
     cv2.imshow('result', result2)
     cv2.imshow('mse', mse)
     mse_num = sum(cv2.sumElems(mse)) / (h_min * w_min * 3)
     print("mean squared error: " + str(mse_num))
-    cv2.imwrite(sys.argv[2].split(".")[0] + "_mse.png", mse)
+    cv2.imwrite(sys.argv[2].split(".")[0] + "_diff.png", diff)
     cv2.waitKey(0)
 

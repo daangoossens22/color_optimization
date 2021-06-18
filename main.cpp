@@ -307,6 +307,7 @@ int main(int argc, const char** argv)
             cv::namedWindow("saliency map", cv::WINDOW_NORMAL);
             cv::resizeWindow("saliency map", 600, 600);
             cv::imshow("saliency map", temp_saliency_map);
+            cv::imwrite("saliency_map.png", temp_saliency_map * 255);
             cv::waitKey(0);
             cv::destroyAllWindows();
             show_saliency_map = false;
@@ -318,6 +319,7 @@ int main(int argc, const char** argv)
             cv::namedWindow("edge map", cv::WINDOW_NORMAL);
             cv::resizeWindow("edge map", 600, 600);
             cv::imshow("edge map", edges);
+            cv::imwrite("edge_map.png", edges);
             cv::waitKey(0);
             cv::destroyAllWindows();
             show_edge_map = false;
