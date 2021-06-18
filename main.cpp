@@ -12,19 +12,13 @@
 #include <opencv2/saliency.hpp>
 #include <opencv2/highgui.hpp>
 
-#include <Eigen/Eigen>
-#include <Eigen/Core>
-#include <Eigen/LU>
-#include <Eigen/Cholesky>
-#include <Eigen/Householder>
-#include <Eigen/SVD>
-#include <Eigen/QR>
 #include <gsl/gsl_fit.h>
 #include <gsl/gsl_multifit.h>
 
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include "shader.h"
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -53,7 +47,6 @@ void update_vertex_colors(int num_triangles_x, int num_triangles_y, const cv::Ma
 void update_triangle_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float triangle_colors1[]);
 void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float triangle_colors1[]);
 void get_average_color(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float total[3], std::function<bool (float x, float y)> count_pixel);
-void update_bilinear_colors_opt(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[]);
 void update_step_constant_color(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, const cv::Mat& edges, bool use_saliency, const float vertices[], int num_edge_detection_points, float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[]);
 void update_step_quadratic_color(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, const cv::Mat& edges, bool use_saliency, const float vertices[], int num_edge_detection_points, float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[]);
 
@@ -77,11 +70,6 @@ int main(int argc, const char** argv)
         return 2;
     }
     load_picture(img_temp, image_location);
-    // load_picture(img_temp, "apple2.jpg");
-    // load_picture(img_temp, "decarlo2.jpg");
-    // load_picture(img_temp, "lenna.png");
-    // load_picture(img_temp, "Octocat.jpg");
-    // load_picture(img_temp, "carrot2.png");
     cv::flip(img_temp, img, 0);
 
     GLFWwindow* window = glfw_setup();
@@ -190,7 +178,7 @@ int main(int argc, const char** argv)
             ImGui::Checkbox("use saliency", &use_saliency);
             ImGui::Checkbox("show saliency map (close window by pressing any key)", &show_saliency_map);
 
-            ImGui::Combo("mode", &mode, "constant (avg)\0 constant (center)\0bilinear (no opt)\0bilinear (opt)\0step (constant)\0step (linear)\0quadratic step\0smooth step\0testing\0\0");
+            ImGui::Combo("mode", &mode, "constant (avg)\0 constant (center)\0bilinear\0step (constant)\0step (linear)\0quadratic step\0\0");
 
             ImGui::SliderInt("min # of edge detection points needed (step)", &num_edge_detection_points, 2, 20);
             ImGui::SliderInt("theshold edge detection", &low_threshold, 0, 160);
@@ -282,16 +270,12 @@ int main(int argc, const char** argv)
                     update_vertex_colors(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, vertex_colors);
                     break;
                 case 3:
-                    update_bilinear_colors_opt(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, vertex_colors);
+                    update_step_constant_color(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, edges, use_saliency, vertices, num_edge_detection_points, triangle_colors1, triangle_colors2, variable_per_triangles);
                     break;
                 case 4:
                     update_step_constant_color(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, edges, use_saliency, vertices, num_edge_detection_points, triangle_colors1, triangle_colors2, variable_per_triangles);
-                    update_vertex_colors(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, vertex_colors);
                     break;
                 case 5:
-                    update_step_constant_color(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, edges, use_saliency, vertices, num_edge_detection_points, triangle_colors1, triangle_colors2, variable_per_triangles);
-                    break;
-                case 6:
                     update_step_quadratic_color(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, edges, use_saliency, vertices, num_edge_detection_points, triangle_colors1, triangle_colors2, variable_per_triangles);
                     break;
             }
@@ -797,131 +781,6 @@ void update_step_quadratic_color(int num_triangles_x, int num_triangles_y, const
     }
 }
 
-
-// -----------------------------------------------------------------------------
-// tries to optimize the vertex colors for bilinear interpolation
-// select points inside each triangle and given the error function (color_image - color_interpolation) * saliency_value
-// using the error functions for points inside the triangles it tries to optimize the vertex colors such that the total error is minimize
-// problems: the optimization return a lot of NaN and negative color values. only solution is to try and optimize it in another way
-void update_bilinear_colors_opt(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float vertices[], float vertex_colors[])
-{
-    int x_max = num_triangles_x;
-    int y_max = num_triangles_y;
-    float width_triangle_pixels = (float)img.cols / (float)x_max;
-    float height_triangle_pixels = (float)img.rows / (float)y_max;
-    float diff_x_pixels = width_triangle_pixels / points_tested_per_side;
-    float diff_y_pixels = height_triangle_pixels / points_tested_per_side;
-    float area_per_small_box = 1.0 / (float)((points_tested_per_side - 1) * (points_tested_per_side - 1)); // 1 / num_boxes
-    float points_per_box = points_tested_per_side * points_tested_per_side;
-
-    // solve Ax = b as closely as possible
-    int num_equations = points_per_box * x_max * y_max;
-    int num_vertices = (x_max + 1) * (y_max + 1);
-    Eigen::MatrixXf matA_r(num_equations, num_vertices);
-    Eigen::VectorXf b_r(num_equations);
-    Eigen::MatrixXf matA_g(num_equations, num_vertices);
-    Eigen::VectorXf b_g(num_equations);
-    Eigen::MatrixXf matA_b(num_equations, num_vertices);
-    Eigen::VectorXf b_b(num_equations);
-
-    for (int y = 0; y < y_max; y++)
-    {
-        for (int x = 0; x < x_max; x++)
-        {
-            unsigned int bottom_left = (x_max + 1) * y + x;
-            unsigned int bottom_right = bottom_left + 1;
-            unsigned int top_left = bottom_left + x_max + 1;
-            unsigned int top_right = top_left + 1;
-
-            // int base_index = bottom_left * points_per_box;
-            int base_index = (y * x_max + x) * points_per_box;
-
-            float bottom_left_x_pixels = (float)(vertices[bottom_left * 6] * (img.cols - 1.0));
-            float bottom_left_y_pixels = (float)img.rows - 1.0 - (float)(vertices[bottom_left * 6 + 1] * (img.rows - 1.0));
-            for (int j = 0; j < points_tested_per_side; j++)
-            {
-                for (int i = 0; i < points_tested_per_side; i++)
-                {
-                    int x2 = std::floor((i * diff_x_pixels) + bottom_left_x_pixels);
-                    int y2 = std::ceil(bottom_left_y_pixels - (j * diff_y_pixels));
-                    cv::Vec3b val = img.at<cv::Vec3b>(y2, x2);
-                    float saliency_val = saliency_map.at<float>(y2, x2);
-                    saliency_val += saliency_bias;
-
-                    float area_bl = i * j * area_per_small_box;
-                    float area_br = (points_tested_per_side - i) * j * area_per_small_box;
-                    float area_tl = i * (points_tested_per_side - j) * area_per_small_box;
-                    float area_tr = (points_tested_per_side - i) * (points_tested_per_side - j) * area_per_small_box;
-
-                    if (use_saliency)
-                    {
-                        val[0] *= saliency_val;
-                        val[1] *= saliency_val;
-                        val[2] *= saliency_val;
-
-                        area_bl *= saliency_val;
-                        area_br *= saliency_val;
-                        area_tl *= saliency_val;
-                        area_tr *= saliency_val;
-                    }
-
-                    int index = base_index + i + (j * points_tested_per_side);
-
-                    b_r(index) = val[2];
-                    b_g(index) = val[1];
-                    b_b(index) = val[0];
-
-                    matA_r(index, bottom_left) = area_tr;
-                    matA_r(index, bottom_right) = area_tl;
-                    matA_r(index, top_left) = area_br;
-                    matA_r(index, top_right) = area_bl;
-
-                    matA_g(index, bottom_left) = area_tr;
-                    matA_g(index, bottom_right) = area_tl;
-                    matA_g(index, top_left) = area_br;
-                    matA_g(index, top_right) = area_bl;
-
-                    matA_b(index, bottom_left) = area_tr;
-                    matA_b(index, bottom_right) = area_tl;
-                    matA_b(index, top_left) = area_br;
-                    matA_b(index, top_right) = area_bl;
-                }
-            }
-        }
-    }
-    // Eigen::VectorXf sol_r = matA_r.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(b_r); // really slow and small number problem
-    // Eigen::VectorXf sol_r = matA_r.householderQr().solve(b_r);
-    Eigen::VectorXf sol_r = matA_r.colPivHouseholderQr().solve(b_r) / 255.0f;
-    Eigen::VectorXf sol_g = matA_g.colPivHouseholderQr().solve(b_g) / 255.0f;
-    Eigen::VectorXf sol_b = matA_b.colPivHouseholderQr().solve(b_b) / 255.0f;
-    // Eigen::VectorXf sol_r = matA_r.fullPivHouseholderQr().solve(b_r); // 0 problem
-    // Eigen::VectorXf sol_r = (matA_r.transpose() * matA_r).ldlt().solve(matA_r.transpose() * b_r); // nan problem
-
-    for (int y = 0; y < y_max; y++)
-    {
-        for (int x = 0; x < x_max; x++)
-        {
-            int base_index = (x + y * x_max) * 3;
-            int index_color = (x + y * x_max);
-
-            float color_r = sol_r(index_color);
-            float color_g = sol_g(index_color);
-            float color_b = sol_b(index_color);
-            color_r = (std::isnan(color_r) || color_r < 0.0) ? 0.0f : color_r;
-            color_g = (std::isnan(color_g) || color_g < 0.0) ? 0.0f : color_g;
-            color_b = (std::isnan(color_b) || color_b < 0.0) ? 0.0f : color_b;
-
-            // set colors
-            vertex_colors[base_index + 0] = color_r;
-            vertex_colors[base_index + 1] = color_g;
-            vertex_colors[base_index + 2] = color_b;
-
-            vertices[base_index * 2 + 3] = color_r;
-            vertices[base_index * 2 + 4] = color_g;
-            vertices[base_index * 2 + 5] = color_b;
-        }
-    }
-}
 
 // -----------------------------------------------------------------------------
 // updates the array that defines where the vertices are
