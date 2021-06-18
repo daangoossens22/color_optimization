@@ -163,9 +163,12 @@ void main()
     case quadratic_interpolation:
       {
         // get all the color values of the control points
+        // vec3 color_p200 = colours[0];
+        // vec3 color_p002 = colours[1];
+        // vec3 color_p020 = colours[2];
         vec3 color_p200 = colours[0];
-        vec3 color_p002 = colours[1];
-        vec3 color_p020 = colours[2];
+        vec3 color_p002 = colours[2];
+        vec3 color_p020 = colours[1];
         vec3 color_p101 = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
         vec3 color_p011 = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
         vec3 color_p110 = vec3(var3[gl_PrimitiveID * 3], var3[(gl_PrimitiveID * 3) + 1], var3[(gl_PrimitiveID * 3) + 2]);
