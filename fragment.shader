@@ -12,6 +12,7 @@ const int bilinear_interpolation = 2;
 const int step_constant = 3;
 const int step_bilinear = 4;
 const int quadratic_step = 5;
+const int quadratic_interpolation = 6;
 
 const int triangles_per_side = 52;
 
@@ -157,6 +158,25 @@ void main()
         {
           color = color2;
         }
+      }
+      break;
+    case quadratic_interpolation:
+      {
+        // get all the color values of the control points
+        vec3 color_p200 = colours[0];
+        vec3 color_p002 = colours[1];
+        vec3 color_p020 = colours[2];
+        vec3 color_p101 = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
+        vec3 color_p011 = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
+        vec3 color_p110 = vec3(var3[gl_PrimitiveID * 3], var3[(gl_PrimitiveID * 3) + 1], var3[(gl_PrimitiveID * 3) + 2]);
+
+        // compute the output color
+        color = coord.x * coord.x * color_p200 +
+                2 * coord.x * coord.y * color_p110 +
+                2 * coord.x * coord.z * color_p101 +
+                coord.y * coord.y * color_p020 +
+                2 * coord.y * coord.z * color_p011 +
+                coord.z * coord.z * color_p002;
       }
       break;
   }
