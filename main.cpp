@@ -57,7 +57,8 @@ void update_triangle_colors(int num_triangles_x, int num_triangles_y, const cv::
 void update_constant_colors(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float triangle_colors1[]);
 void update_step_constant_color(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, const cv::Mat& edges, bool use_saliency, const float vertices[], int num_edge_detection_points, float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[]);
 void update_step_quadratic_color(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, const cv::Mat& edges, bool use_saliency, const float vertices[], int num_edge_detection_points, float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[]);
-void update_quadratic_interpolation(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float vertex_colors[], float triangle_colors1[], float triangle_colors2[], float triangle_colors3[], float triangle_colors4[], float triangle_colors5[], float triangle_colors6[]);
+void update_quadratic_interpolation(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float* triangle_colors[]);
+void update_cubic_interpolation(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float** triangle_colors);
 
 int main(int argc, const char** argv)
 {
@@ -97,60 +98,77 @@ int main(int argc, const char** argv)
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    unsigned int variables1, variables2, variables3, variables4, variables5, variables6;
-    glGenBuffers(1, &variables1);
-    glBindBuffer(GL_UNIFORM_BUFFER, variables1);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    int c = 10;
+    unsigned int variables[c] = { 0 };
+    for (int i = 0; i < c; ++i)
+    {
+        glGenBuffers(1, &variables[i]);
+        glBindBuffer(GL_UNIFORM_BUFFER, variables[i]);
+        glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    }
+    unsigned int inddd[c] = { 0 };
+    for (int i = 0; i < c; ++i)
+    {
+        inddd[i] = glGetUniformBlockIndex(shader.ID, ("variables" + std::to_string(i+1)).c_str());
+        glUniformBlockBinding(shader.ID, inddd[i], i);
+        glBindBufferBase(GL_UNIFORM_BUFFER, i, variables[i]);
+    }
 
-    glGenBuffers(1, &variables2);
-    glBindBuffer(GL_UNIFORM_BUFFER, variables2);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    // unsigned int variables1, variables2, variables3, variables4, variables5, variables6;
+    // glGenBuffers(1, &variables1);
+    // glBindBuffer(GL_UNIFORM_BUFFER, variables1);
+    // glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
+    // glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-    glGenBuffers(1, &variables3);
-    glBindBuffer(GL_UNIFORM_BUFFER, variables3);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    // glGenBuffers(1, &variables2);
+    // glBindBuffer(GL_UNIFORM_BUFFER, variables2);
+    // glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
+    // glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-    glGenBuffers(1, &variables4);
-    glBindBuffer(GL_UNIFORM_BUFFER, variables4);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    // glGenBuffers(1, &variables3);
+    // glBindBuffer(GL_UNIFORM_BUFFER, variables3);
+    // glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
+    // glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-    glGenBuffers(1, &variables5);
-    glBindBuffer(GL_UNIFORM_BUFFER, variables5);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    // glGenBuffers(1, &variables4);
+    // glBindBuffer(GL_UNIFORM_BUFFER, variables4);
+    // glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
+    // glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-    glGenBuffers(1, &variables6);
-    glBindBuffer(GL_UNIFORM_BUFFER, variables6);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    // glGenBuffers(1, &variables5);
+    // glBindBuffer(GL_UNIFORM_BUFFER, variables5);
+    // glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
+    // glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-    unsigned int inddd = glGetUniformBlockIndex(shader.ID, "variables1");
-    glUniformBlockBinding(shader.ID, inddd, 0);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 0, variables1);
+    // glGenBuffers(1, &variables6);
+    // glBindBuffer(GL_UNIFORM_BUFFER, variables6);
+    // glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
+    // glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-    unsigned int inddd2 = glGetUniformBlockIndex(shader.ID, "variables2");
-    glUniformBlockBinding(shader.ID, inddd2, 1);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 1, variables2);
+    // unsigned int inddd = glGetUniformBlockIndex(shader.ID, "variables1");
+    // glUniformBlockBinding(shader.ID, inddd, 0);
+    // glBindBufferBase(GL_UNIFORM_BUFFER, 0, variables1);
 
-    unsigned int inddd3 = glGetUniformBlockIndex(shader.ID, "variables3");
-    glUniformBlockBinding(shader.ID, inddd3, 2);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 2, variables3);
+    // unsigned int inddd2 = glGetUniformBlockIndex(shader.ID, "variables2");
+    // glUniformBlockBinding(shader.ID, inddd2, 1);
+    // glBindBufferBase(GL_UNIFORM_BUFFER, 1, variables2);
 
-    unsigned int inddd4 = glGetUniformBlockIndex(shader.ID, "variables4");
-    glUniformBlockBinding(shader.ID, inddd4, 3);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 3, variables4);
+    // unsigned int inddd3 = glGetUniformBlockIndex(shader.ID, "variables3");
+    // glUniformBlockBinding(shader.ID, inddd3, 2);
+    // glBindBufferBase(GL_UNIFORM_BUFFER, 2, variables3);
 
-    unsigned int inddd5 = glGetUniformBlockIndex(shader.ID, "variables5");
-    glUniformBlockBinding(shader.ID, inddd5, 4);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 4, variables5);
+    // unsigned int inddd4 = glGetUniformBlockIndex(shader.ID, "variables4");
+    // glUniformBlockBinding(shader.ID, inddd4, 3);
+    // glBindBufferBase(GL_UNIFORM_BUFFER, 3, variables4);
 
-    unsigned int inddd6 = glGetUniformBlockIndex(shader.ID, "variables6");
-    glUniformBlockBinding(shader.ID, inddd6, 5);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 5, variables6);
+    // unsigned int inddd5 = glGetUniformBlockIndex(shader.ID, "variables5");
+    // glUniformBlockBinding(shader.ID, inddd5, 4);
+    // glBindBufferBase(GL_UNIFORM_BUFFER, 4, variables5);
+
+    // unsigned int inddd6 = glGetUniformBlockIndex(shader.ID, "variables6");
+    // glUniformBlockBinding(shader.ID, inddd6, 5);
+    // glBindBufferBase(GL_UNIFORM_BUFFER, 5, variables6);
     // -----------------------------------------------------------------------------
     // imgui variables
     bool show_demo_window = false;
@@ -160,7 +178,7 @@ int main(int argc, const char** argv)
     bool use_saliency = true;
     int saliency_mode = 0;
     bool show_saliency_map = false;
-    int mode = 6;
+    int mode = 7;
     int num_edge_detection_points = 4;
     // int low_threshold = 130;
     int low_threshold = 59;
@@ -190,6 +208,11 @@ int main(int argc, const char** argv)
     float triangle_colors4[num_triangles];
     float triangle_colors5[num_triangles];
     float triangle_colors6[num_triangles];
+    float triangle_colors7[num_triangles];
+    float triangle_colors8[num_triangles];
+    float triangle_colors9[num_triangles];
+    float triangle_colors10[num_triangles];
+    float* triangle_colors[c] = { triangle_colors1, triangle_colors2, triangle_colors3, triangle_colors4, triangle_colors5, triangle_colors6, triangle_colors7, triangle_colors8, triangle_colors9, triangle_colors10 };
 
     // Main loop
     while (!glfwWindowShouldClose(window))
@@ -216,7 +239,7 @@ int main(int argc, const char** argv)
             ImGui::Checkbox("use saliency", &use_saliency);
             ImGui::Checkbox("show saliency map (close window by pressing any key)", &show_saliency_map);
 
-            ImGui::Combo("mode", &mode, "constant (avg)\0constant (center)\0bilinear interpolation\0step (constant)\0step (linear)\0quadratic step\0biquadratic interpolation\0\0");
+            ImGui::Combo("mode", &mode, "constant (avg)\0constant (center)\0bilinear interpolation\0step (constant)\0step (linear)\0quadratic step\0biquadratic interpolation\0cubic interpolation\0\0");
 
             ImGui::SliderInt("min # of edge detection points needed (step)", &num_edge_detection_points, 2, 20);
             ImGui::SliderInt("theshold edge detection", &low_threshold, 0, 160);
@@ -317,10 +340,11 @@ int main(int argc, const char** argv)
                     update_step_quadratic_color(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, edges, use_saliency, vertices, num_edge_detection_points, triangle_colors1, triangle_colors2, triangle_colors3);
                     break;
                 case 6:
-                    update_vertex_colors(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, vertex_colors);
-                    update_quadratic_interpolation(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, vertex_colors, triangle_colors1, triangle_colors2, triangle_colors3, triangle_colors4, triangle_colors5, triangle_colors6);
+                    update_quadratic_interpolation(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, triangle_colors);
                     break;
-
+                case 7:
+                    update_cubic_interpolation(num_triangles_dimensions[0], num_triangles_dimensions[1], img, saliency_map, use_saliency, vertices, triangle_colors);
+                    break;
             }
         }
 
@@ -354,29 +378,36 @@ int main(int argc, const char** argv)
 
         // -----------------------------------------------------------------------------
         // put all the buffers on the gpu
-        glBindBuffer(GL_UNIFORM_BUFFER, variables1);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors1);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        for (int i = 0; i < c; ++i)
+        {
+            glBindBuffer(GL_UNIFORM_BUFFER, variables[i]);
+            glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors[i]);
+            glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        }
 
-        glBindBuffer(GL_UNIFORM_BUFFER, variables2);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors2);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        // glBindBuffer(GL_UNIFORM_BUFFER, variables1);
+        // glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors1);
+        // glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-        glBindBuffer(GL_UNIFORM_BUFFER, variables3);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors3);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
-        
-        glBindBuffer(GL_UNIFORM_BUFFER, variables4);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors4);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
-        
-        glBindBuffer(GL_UNIFORM_BUFFER, variables5);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors5);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
-        
-        glBindBuffer(GL_UNIFORM_BUFFER, variables6);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors6);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        // glBindBuffer(GL_UNIFORM_BUFFER, variables2);
+        // glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors2);
+        // glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+        // glBindBuffer(GL_UNIFORM_BUFFER, variables3);
+        // glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors3);
+        // glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        // 
+        // glBindBuffer(GL_UNIFORM_BUFFER, variables4);
+        // glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors4);
+        // glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        // 
+        // glBindBuffer(GL_UNIFORM_BUFFER, variables5);
+        // glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors5);
+        // glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        // 
+        // glBindBuffer(GL_UNIFORM_BUFFER, variables6);
+        // glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors6);
+        // glBindBuffer(GL_UNIFORM_BUFFER, 0);
         
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
@@ -853,6 +884,19 @@ struct quadratic_bezier_triangle
     float p_011[3];
     float p_101[3];
 };
+struct cubic_bezier_triangle
+{
+    float p_300[3];
+    float p_210[3];
+    float p_201[3];
+    float p_120[3];
+    float p_111[3];
+    float p_102[3];
+    float p_030[3];
+    float p_021[3];
+    float p_012[3];
+    float p_003[3];
+};
 
 struct barycentric_coordinates
 {
@@ -861,7 +905,73 @@ struct barycentric_coordinates
     float u;
 };
 
-void optimize_bezier_triangle(int index, std::vector<pixel_info>& pixels, std::vector<barycentric_coordinates>& bary_coords, quadratic_bezier_triangle& result)
+void optimize_cubic_bezier_triangle(int index, std::vector<pixel_info>& pixels, std::vector<barycentric_coordinates>& bary_coords, cubic_bezier_triangle& result)
+{
+    int n = (int)pixels.size();
+    double chisq;
+    gsl_matrix *X, *cov;
+    gsl_vector *y, *c;
+
+    X = gsl_matrix_alloc(n, 10);
+    y = gsl_vector_alloc(n);
+    // w = gsl_vector_alloc(n);
+    c = gsl_vector_alloc(10);
+    cov = gsl_matrix_alloc(10, 10);
+
+    for (int i = 0; i < n; ++i)
+    {
+        float s = bary_coords[i].s;
+        float t = bary_coords[i].t;
+        float u = bary_coords[i].u;
+
+        gsl_matrix_set(X, i, 0, s * s * s);
+        gsl_matrix_set(X, i, 1, 3.0f * s * s * t); 
+        gsl_matrix_set(X, i, 2, 3.0f * s * s * u); 
+        gsl_matrix_set(X, i, 3, 3.0f * s * t * t); 
+        gsl_matrix_set(X, i, 4, 6.0f * s * t * u); 
+        gsl_matrix_set(X, i, 5, 3.0f * s * u * u); 
+        gsl_matrix_set(X, i, 6, t * t * t); 
+        gsl_matrix_set(X, i, 7, 3.0f * t * t * u); 
+        gsl_matrix_set(X, i, 8, 3.0f * t * u * u); 
+        gsl_matrix_set(X, i, 9, u * u * u); 
+
+        gsl_vector_set(y, i, pixels[i].color[index] / 255.0f);
+    }
+    gsl_multifit_linear_workspace* work = gsl_multifit_linear_alloc(n, 10);
+    gsl_multifit_linear(X, y, c, cov, &chisq, work);
+
+    // y = ...
+    // result.p_300[index] = std::clamp((float)gsl_vector_get(c, (0)), 0.0f, 1.0f);
+    // result.p_210[index] = std::clamp((float)gsl_vector_get(c, (1)), 0.0f, 1.0f);
+    // result.p_201[index] = std::clamp((float)gsl_vector_get(c, (2)), 0.0f, 1.0f);
+    // result.p_120[index] = std::clamp((float)gsl_vector_get(c, (3)), 0.0f, 1.0f);
+    // result.p_111[index] = std::clamp((float)gsl_vector_get(c, (4)), 0.0f, 1.0f);
+    // result.p_102[index] = std::clamp((float)gsl_vector_get(c, (5)), 0.0f, 1.0f);
+    // result.p_030[index] = std::clamp((float)gsl_vector_get(c, (6)), 0.0f, 1.0f);
+    // result.p_021[index] = std::clamp((float)gsl_vector_get(c, (7)), 0.0f, 1.0f);
+    // result.p_012[index] = std::clamp((float)gsl_vector_get(c, (8)), 0.0f, 1.0f);
+    // result.p_003[index] = std::clamp((float)gsl_vector_get(c, (9)), 0.0f, 1.0f);
+
+    result.p_300[index] = (float)gsl_vector_get(c, (0));
+    result.p_210[index] = (float)gsl_vector_get(c, (1));
+    result.p_201[index] = (float)gsl_vector_get(c, (2));
+    result.p_120[index] = (float)gsl_vector_get(c, (3));
+    result.p_111[index] = (float)gsl_vector_get(c, (4));
+    result.p_102[index] = (float)gsl_vector_get(c, (5));
+    result.p_030[index] = (float)gsl_vector_get(c, (6));
+    result.p_021[index] = (float)gsl_vector_get(c, (7));
+    result.p_012[index] = (float)gsl_vector_get(c, (8));
+    result.p_003[index] = (float)gsl_vector_get(c, (9));
+
+    gsl_multifit_linear_free(work);
+    gsl_matrix_free(X);
+    gsl_vector_free(y);
+    // gsl_vector_free(w);
+    gsl_vector_free(c);
+    gsl_matrix_free(cov);
+}
+
+void optimize_quadratic_bezier_triangle(int index, std::vector<pixel_info>& pixels, std::vector<barycentric_coordinates>& bary_coords, quadratic_bezier_triangle& result)
 {
     int n = (int)pixels.size();
     double chisq;
@@ -889,12 +999,19 @@ void optimize_bezier_triangle(int index, std::vector<pixel_info>& pixels, std::v
     gsl_multifit_linear(X, y, c, cov, &chisq, work);
 
     // y = ...
-    result.p_110[index] = std::clamp((float)gsl_vector_get(c, (0)), 0.0f, 1.0f);
-    result.p_101[index] = std::clamp((float)gsl_vector_get(c, (1)), 0.0f, 1.0f);
-    result.p_011[index] = std::clamp((float)gsl_vector_get(c, (2)), 0.0f, 1.0f);
-    result.p_200[index] = std::clamp((float)gsl_vector_get(c, (3)), 0.0f, 1.0f);
-    result.p_020[index] = std::clamp((float)gsl_vector_get(c, (4)), 0.0f, 1.0f);
-    result.p_002[index] = std::clamp((float)gsl_vector_get(c, (5)), 0.0f, 1.0f);
+    // result.p_110[index] = std::clamp((float)gsl_vector_get(c, (0)), 0.0f, 1.0f);
+    // result.p_101[index] = std::clamp((float)gsl_vector_get(c, (1)), 0.0f, 1.0f);
+    // result.p_011[index] = std::clamp((float)gsl_vector_get(c, (2)), 0.0f, 1.0f);
+    // result.p_200[index] = std::clamp((float)gsl_vector_get(c, (3)), 0.0f, 1.0f);
+    // result.p_020[index] = std::clamp((float)gsl_vector_get(c, (4)), 0.0f, 1.0f);
+    // result.p_002[index] = std::clamp((float)gsl_vector_get(c, (5)), 0.0f, 1.0f);
+
+    result.p_110[index] = (float)gsl_vector_get(c, (0));
+    result.p_101[index] = (float)gsl_vector_get(c, (1));
+    result.p_011[index] = (float)gsl_vector_get(c, (2));
+    result.p_200[index] = (float)gsl_vector_get(c, (3));
+    result.p_020[index] = (float)gsl_vector_get(c, (4));
+    result.p_002[index] = (float)gsl_vector_get(c, (5));
 
     gsl_multifit_linear_free(work);
     gsl_matrix_free(X);
@@ -927,7 +1044,7 @@ std::vector<barycentric_coordinates> convert_to_barycentric(const std::vector<pi
     return res;
 }
 
-void update_quadratic_interpolation(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float vertex_colors[], float triangle_colors1[], float triangle_colors2[], float triangle_colors3[], float triangle_colors4[], float triangle_colors5[], float triangle_colors6[])
+void update_quadratic_interpolation(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float* triangle_colors[])
 {
     int x_max = num_triangles_x;
     int y_max = num_triangles_y;
@@ -961,52 +1078,160 @@ void update_quadratic_interpolation(int num_triangles_x, int num_triangles_y, co
 
             quadratic_bezier_triangle triangle_1_res;
             quadratic_bezier_triangle triangle_2_res;
-            optimize_bezier_triangle(0, triangle_1, bary_1, triangle_1_res);
-            optimize_bezier_triangle(1, triangle_1, bary_1, triangle_1_res);
-            optimize_bezier_triangle(2, triangle_1, bary_1, triangle_1_res);
-            optimize_bezier_triangle(0, triangle_2, bary_2, triangle_2_res);
-            optimize_bezier_triangle(1, triangle_2, bary_2, triangle_2_res);
-            optimize_bezier_triangle(2, triangle_2, bary_2, triangle_2_res);
+            optimize_quadratic_bezier_triangle(0, triangle_1, bary_1, triangle_1_res);
+            optimize_quadratic_bezier_triangle(1, triangle_1, bary_1, triangle_1_res);
+            optimize_quadratic_bezier_triangle(2, triangle_1, bary_1, triangle_1_res);
+            optimize_quadratic_bezier_triangle(0, triangle_2, bary_2, triangle_2_res);
+            optimize_quadratic_bezier_triangle(1, triangle_2, bary_2, triangle_2_res);
+            optimize_quadratic_bezier_triangle(2, triangle_2, bary_2, triangle_2_res);
 
 
             int basee = (x + (y * x_max)) * 6;
-            triangle_colors1[basee + 0] = triangle_1_res.p_101[0];
-            triangle_colors1[basee + 1] = triangle_1_res.p_101[1];
-            triangle_colors1[basee + 2] = triangle_1_res.p_101[2];
-            triangle_colors2[basee + 0] = triangle_1_res.p_011[0];
-            triangle_colors2[basee + 1] = triangle_1_res.p_011[1];
-            triangle_colors2[basee + 2] = triangle_1_res.p_011[2];
-            triangle_colors3[basee + 0] = triangle_1_res.p_110[0];
-            triangle_colors3[basee + 1] = triangle_1_res.p_110[1];
-            triangle_colors3[basee + 2] = triangle_1_res.p_110[2];
-            triangle_colors4[basee + 0] = triangle_1_res.p_200[0];
-            triangle_colors4[basee + 1] = triangle_1_res.p_200[1];
-            triangle_colors4[basee + 2] = triangle_1_res.p_200[2];
-            triangle_colors5[basee + 0] = triangle_1_res.p_020[0];
-            triangle_colors5[basee + 1] = triangle_1_res.p_020[1];
-            triangle_colors5[basee + 2] = triangle_1_res.p_020[2];
-            triangle_colors6[basee + 0] = triangle_1_res.p_002[0];
-            triangle_colors6[basee + 1] = triangle_1_res.p_002[1];
-            triangle_colors6[basee + 2] = triangle_1_res.p_002[2];
+            triangle_colors[0][basee + 0] = triangle_1_res.p_101[0];
+            triangle_colors[0][basee + 1] = triangle_1_res.p_101[1];
+            triangle_colors[0][basee + 2] = triangle_1_res.p_101[2];
+            triangle_colors[1][basee + 0] = triangle_1_res.p_011[0];
+            triangle_colors[1][basee + 1] = triangle_1_res.p_011[1];
+            triangle_colors[1][basee + 2] = triangle_1_res.p_011[2];
+            triangle_colors[2][basee + 0] = triangle_1_res.p_110[0];
+            triangle_colors[2][basee + 1] = triangle_1_res.p_110[1];
+            triangle_colors[2][basee + 2] = triangle_1_res.p_110[2];
+            triangle_colors[3][basee + 0] = triangle_1_res.p_200[0];
+            triangle_colors[3][basee + 1] = triangle_1_res.p_200[1];
+            triangle_colors[3][basee + 2] = triangle_1_res.p_200[2];
+            triangle_colors[4][basee + 0] = triangle_1_res.p_020[0];
+            triangle_colors[4][basee + 1] = triangle_1_res.p_020[1];
+            triangle_colors[4][basee + 2] = triangle_1_res.p_020[2];
+            triangle_colors[5][basee + 0] = triangle_1_res.p_002[0];
+            triangle_colors[5][basee + 1] = triangle_1_res.p_002[1];
+            triangle_colors[5][basee + 2] = triangle_1_res.p_002[2];
 
-            triangle_colors1[basee + 3] = triangle_2_res.p_101[0];
-            triangle_colors1[basee + 4] = triangle_2_res.p_101[1];
-            triangle_colors1[basee + 5] = triangle_2_res.p_101[2];
-            triangle_colors2[basee + 3] = triangle_2_res.p_011[0];
-            triangle_colors2[basee + 4] = triangle_2_res.p_011[1];
-            triangle_colors2[basee + 5] = triangle_2_res.p_011[2];
-            triangle_colors3[basee + 3] = triangle_2_res.p_110[0];
-            triangle_colors3[basee + 4] = triangle_2_res.p_110[1];
-            triangle_colors3[basee + 5] = triangle_2_res.p_110[2];
-            triangle_colors4[basee + 3] = triangle_2_res.p_200[0];
-            triangle_colors4[basee + 4] = triangle_2_res.p_200[1];
-            triangle_colors4[basee + 5] = triangle_2_res.p_200[2];
-            triangle_colors5[basee + 3] = triangle_2_res.p_020[0];
-            triangle_colors5[basee + 4] = triangle_2_res.p_020[1];
-            triangle_colors5[basee + 5] = triangle_2_res.p_020[2];
-            triangle_colors6[basee + 3] = triangle_2_res.p_002[0];
-            triangle_colors6[basee + 4] = triangle_2_res.p_002[1];
-            triangle_colors6[basee + 5] = triangle_2_res.p_002[2];
+            triangle_colors[0][basee + 3] = triangle_2_res.p_101[0];
+            triangle_colors[0][basee + 4] = triangle_2_res.p_101[1];
+            triangle_colors[0][basee + 5] = triangle_2_res.p_101[2];
+            triangle_colors[1][basee + 3] = triangle_2_res.p_011[0];
+            triangle_colors[1][basee + 4] = triangle_2_res.p_011[1];
+            triangle_colors[1][basee + 5] = triangle_2_res.p_011[2];
+            triangle_colors[2][basee + 3] = triangle_2_res.p_110[0];
+            triangle_colors[2][basee + 4] = triangle_2_res.p_110[1];
+            triangle_colors[2][basee + 5] = triangle_2_res.p_110[2];
+            triangle_colors[3][basee + 3] = triangle_2_res.p_200[0];
+            triangle_colors[3][basee + 4] = triangle_2_res.p_200[1];
+            triangle_colors[3][basee + 5] = triangle_2_res.p_200[2];
+            triangle_colors[4][basee + 3] = triangle_2_res.p_020[0];
+            triangle_colors[4][basee + 4] = triangle_2_res.p_020[1];
+            triangle_colors[4][basee + 5] = triangle_2_res.p_020[2];
+            triangle_colors[5][basee + 3] = triangle_2_res.p_002[0];
+            triangle_colors[5][basee + 4] = triangle_2_res.p_002[1];
+            triangle_colors[5][basee + 5] = triangle_2_res.p_002[2];
+        }
+    }
+}
+
+void update_cubic_interpolation(int num_triangles_x, int num_triangles_y, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, const float vertices[], float** triangle_colors)
+{
+    int x_max = num_triangles_x;
+    int y_max = num_triangles_y;
+    float width_triangle_pixels = (float)img.cols / (float)x_max;
+    float height_triangle_pixels = (float)img.rows / (float)y_max;
+
+    for (int y = 0; y < y_max; y++)
+    {
+        for (int x = 0; x < x_max; x++)
+        {
+            // (x_max + 1) becuase the rightmost vertices are already tested in the previous box
+            unsigned int bottom_left = (x_max + 1) * y + x;
+
+            // top left = (0, 0), top right = (0, img.cols - 1), bottom left = (img.rows - 1, 0)
+            float bottom_left_x_pixels = (float)(vertices[bottom_left * 6] * img.cols);
+            float bottom_left_y_pixels = (float)(vertices[bottom_left * 6 + 1] * img.rows);
+
+            // function to test for a box which triangle is the bottom left one or the top right one
+            bool (*test_left_triangle)(float, float) = [](float x, float y) {return x + y <= 1.0f;};
+            bool (*test_right_triangle)(float, float) = [](float x, float y) {return x + y >= 1.0f;};
+
+            // get the sample points for both triangles
+            std::vector<pixel_info> triangle_1;
+            std::vector<pixel_info> triangle_2;
+            get_pixels_in_triangle(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, test_left_triangle, triangle_1);
+            get_pixels_in_triangle(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, test_right_triangle, triangle_2);
+
+            // convert the points to the barycentric coordinates (function in struct??)
+            std::vector<barycentric_coordinates> bary_1 = convert_to_barycentric(triangle_1, true);
+            std::vector<barycentric_coordinates> bary_2 = convert_to_barycentric(triangle_2, false);
+
+            cubic_bezier_triangle triangle_1_res;
+            cubic_bezier_triangle triangle_2_res;
+            optimize_cubic_bezier_triangle(0, triangle_1, bary_1, triangle_1_res);
+            optimize_cubic_bezier_triangle(1, triangle_1, bary_1, triangle_1_res);
+            optimize_cubic_bezier_triangle(2, triangle_1, bary_1, triangle_1_res);
+            optimize_cubic_bezier_triangle(0, triangle_2, bary_2, triangle_2_res);
+            optimize_cubic_bezier_triangle(1, triangle_2, bary_2, triangle_2_res);
+            optimize_cubic_bezier_triangle(2, triangle_2, bary_2, triangle_2_res);
+
+
+            int basee = (x + (y * x_max)) * 6;
+            triangle_colors[0][basee + 0] = triangle_1_res.p_300[0];
+            triangle_colors[0][basee + 1] = triangle_1_res.p_300[1];
+            triangle_colors[0][basee + 2] = triangle_1_res.p_300[2];
+            triangle_colors[1][basee + 0] = triangle_1_res.p_210[0];
+            triangle_colors[1][basee + 1] = triangle_1_res.p_210[1];
+            triangle_colors[1][basee + 2] = triangle_1_res.p_210[2];
+            triangle_colors[2][basee + 0] = triangle_1_res.p_201[0];
+            triangle_colors[2][basee + 1] = triangle_1_res.p_201[1];
+            triangle_colors[2][basee + 2] = triangle_1_res.p_201[2];
+            triangle_colors[3][basee + 0] = triangle_1_res.p_120[0];
+            triangle_colors[3][basee + 1] = triangle_1_res.p_120[1];
+            triangle_colors[3][basee + 2] = triangle_1_res.p_120[2];
+            triangle_colors[4][basee + 0] = triangle_1_res.p_111[0];
+            triangle_colors[4][basee + 1] = triangle_1_res.p_111[1];
+            triangle_colors[4][basee + 2] = triangle_1_res.p_111[2];
+            triangle_colors[5][basee + 0] = triangle_1_res.p_102[0];
+            triangle_colors[5][basee + 1] = triangle_1_res.p_102[1];
+            triangle_colors[5][basee + 2] = triangle_1_res.p_102[2];
+            triangle_colors[6][basee + 0] = triangle_1_res.p_030[0];
+            triangle_colors[6][basee + 1] = triangle_1_res.p_030[1];
+            triangle_colors[6][basee + 2] = triangle_1_res.p_030[2];
+            triangle_colors[7][basee + 0] = triangle_1_res.p_021[0];
+            triangle_colors[7][basee + 1] = triangle_1_res.p_021[1];
+            triangle_colors[7][basee + 2] = triangle_1_res.p_021[2];
+            triangle_colors[8][basee + 0] = triangle_1_res.p_012[0];
+            triangle_colors[8][basee + 1] = triangle_1_res.p_012[1];
+            triangle_colors[8][basee + 2] = triangle_1_res.p_012[2];
+            triangle_colors[9][basee + 0] = triangle_1_res.p_003[0];
+            triangle_colors[9][basee + 1] = triangle_1_res.p_003[1];
+            triangle_colors[9][basee + 2] = triangle_1_res.p_003[2];
+
+            triangle_colors[0][basee + 3] = triangle_2_res.p_300[0];
+            triangle_colors[0][basee + 4] = triangle_2_res.p_300[1];
+            triangle_colors[0][basee + 5] = triangle_2_res.p_300[2];
+            triangle_colors[1][basee + 3] = triangle_2_res.p_210[0];
+            triangle_colors[1][basee + 4] = triangle_2_res.p_210[1];
+            triangle_colors[1][basee + 5] = triangle_2_res.p_210[2];
+            triangle_colors[2][basee + 3] = triangle_2_res.p_201[0];
+            triangle_colors[2][basee + 4] = triangle_2_res.p_201[1];
+            triangle_colors[2][basee + 5] = triangle_2_res.p_201[2];
+            triangle_colors[3][basee + 3] = triangle_2_res.p_120[0];
+            triangle_colors[3][basee + 4] = triangle_2_res.p_120[1];
+            triangle_colors[3][basee + 5] = triangle_2_res.p_120[2];
+            triangle_colors[4][basee + 3] = triangle_2_res.p_111[0];
+            triangle_colors[4][basee + 4] = triangle_2_res.p_111[1];
+            triangle_colors[4][basee + 5] = triangle_2_res.p_111[2];
+            triangle_colors[5][basee + 3] = triangle_2_res.p_102[0];
+            triangle_colors[5][basee + 4] = triangle_2_res.p_102[1];
+            triangle_colors[5][basee + 5] = triangle_2_res.p_102[2];
+            triangle_colors[6][basee + 3] = triangle_2_res.p_030[0];
+            triangle_colors[6][basee + 4] = triangle_2_res.p_030[1];
+            triangle_colors[6][basee + 5] = triangle_2_res.p_030[2];
+            triangle_colors[7][basee + 3] = triangle_2_res.p_021[0];
+            triangle_colors[7][basee + 4] = triangle_2_res.p_021[1];
+            triangle_colors[7][basee + 5] = triangle_2_res.p_021[2];
+            triangle_colors[8][basee + 3] = triangle_2_res.p_012[0];
+            triangle_colors[8][basee + 4] = triangle_2_res.p_012[1];
+            triangle_colors[8][basee + 5] = triangle_2_res.p_012[2];
+            triangle_colors[9][basee + 3] = triangle_2_res.p_003[0];
+            triangle_colors[9][basee + 4] = triangle_2_res.p_003[1];
+            triangle_colors[9][basee + 5] = triangle_2_res.p_003[2];
         }
     }
 }

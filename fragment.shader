@@ -13,6 +13,7 @@ const int step_constant = 3;
 const int step_bilinear = 4;
 const int quadratic_step = 5;
 const int quadratic_interpolation = 6;
+const int cubic_interpolation = 7;
 
 const int triangles_per_side = 52;
 
@@ -36,6 +37,18 @@ uniform variables5 {
 };
 uniform variables6 {
   float var6[triangles_per_side * triangles_per_side * 2 * 3];
+};
+uniform variables7 {
+  float var7[triangles_per_side * triangles_per_side * 2 * 3];
+};
+uniform variables8 {
+  float var8[triangles_per_side * triangles_per_side * 2 * 3];
+};
+uniform variables9 {
+  float var9[triangles_per_side * triangles_per_side * 2 * 3];
+};
+uniform variables10 {
+  float var10[triangles_per_side * triangles_per_side * 2 * 3];
 };
 
 void main()
@@ -187,11 +200,36 @@ void main()
 
         // compute the output color
         color = coord.x * coord.x * color_p200 +
-                2 * coord.x * coord.y * color_p110 +
-                2 * coord.x * coord.z * color_p101 +
+                2.0f * coord.x * coord.y * color_p110 +
+                2.0f * coord.x * coord.z * color_p101 +
                 coord.y * coord.y * color_p020 +
-                2 * coord.y * coord.z * color_p011 +
+                2.0f * coord.y * coord.z * color_p011 +
                 coord.z * coord.z * color_p002;
+      }
+      break;
+    case cubic_interpolation:
+      {
+        vec3 p300 = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
+        vec3 p210 = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
+        vec3 p201 = vec3(var3[gl_PrimitiveID * 3], var3[(gl_PrimitiveID * 3) + 1], var3[(gl_PrimitiveID * 3) + 2]);
+        vec3 p120 = vec3(var4[gl_PrimitiveID * 3], var4[(gl_PrimitiveID * 3) + 1], var4[(gl_PrimitiveID * 3) + 2]);
+        vec3 p111 = vec3(var5[gl_PrimitiveID * 3], var5[(gl_PrimitiveID * 3) + 1], var5[(gl_PrimitiveID * 3) + 2]);
+        vec3 p102 = vec3(var6[gl_PrimitiveID * 3], var6[(gl_PrimitiveID * 3) + 1], var6[(gl_PrimitiveID * 3) + 2]);
+        vec3 p030 = vec3(var7[gl_PrimitiveID * 3], var7[(gl_PrimitiveID * 3) + 1], var7[(gl_PrimitiveID * 3) + 2]);
+        vec3 p021 = vec3(var8[gl_PrimitiveID * 3], var8[(gl_PrimitiveID * 3) + 1], var8[(gl_PrimitiveID * 3) + 2]);
+        vec3 p012 = vec3(var9[gl_PrimitiveID * 3], var9[(gl_PrimitiveID * 3) + 1], var9[(gl_PrimitiveID * 3) + 2]);
+        vec3 p003 = vec3(var10[gl_PrimitiveID * 3], var10[(gl_PrimitiveID * 3) + 1], var10[(gl_PrimitiveID * 3) + 2]);
+
+        color = p300 * coord.x * coord.x * coord.x +
+                3.0f * p210 * coord.x * coord.x * coord.y +
+                3.0f * p201 * coord.x * coord.x * coord.z +
+                3.0f * p120 * coord.x * coord.y * coord.y +
+                6.0f * p111 * coord.x * coord.y * coord.z +
+                3.0f * p102 * coord.x * coord.z * coord.z +
+                p030 * coord.y * coord.y * coord.y +
+                3.0f * p021 * coord.y * coord.y * coord.z +
+                3.0f * p012 * coord.y * coord.z * coord.z +
+                p003 * coord.z * coord.z * coord.z;
       }
       break;
   }
