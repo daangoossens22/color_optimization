@@ -26,45 +26,18 @@ CXXFLAGS = -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends
 CXXFLAGS += -g -Wall -Wformat
 LIBS =
 
-# CXXFLAGS += -I/usr/include/opencv4
 CXXFLAGS += `pkg-config --cflags opencv4`
-CXXFLAGS += `pkg-config --cflags eigen3`
 LIBS += -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_saliency
 LIBS += `pkg-config --libs gsl`
 LIBS += -lfreeimage
-# CXXFLAGS += $(shell pkg-config --cflags opencv4)
-# LIBS += $(shell pkg-config --libs opencv4)
-# LIBS += `pkg-config --static --libs opencv4`
 
 ##---------------------------------------------------------------------
 ## OPENGL LOADER
 ##---------------------------------------------------------------------
 
-## Using OpenGL loader: gl3w [default]
-# SOURCES += ../libs/gl3w/GL/gl3w.c
-# CXXFLAGS += -I../libs/gl3w -DIMGUI_IMPL_OPENGL_LOADER_GL3W
-
-## Using OpenGL loader: glew
-## (This assumes a system-wide installation)
-# CXXFLAGS += -DIMGUI_IMPL_OPENGL_LOADER_GLEW
-# LIBS += -lGLEW
-
-## Using OpenGL loader: glad
-# SOURCES += ../libs/glad/src/glad.c
-# CXXFLAGS += -I../libs/glad/include -DIMGUI_IMPL_OPENGL_LOADER_GLAD
-
 ## Using OpenGL loader: glad2
 SOURCES += gl.c
 CXXFLAGS += -Iglad/include -DIMGUI_IMPL_OPENGL_LOADER_GLAD2
-
-## Using OpenGL loader: glbinding
-## This assumes a system-wide installation
-## of either version 3.0.0 (or newer)
-# CXXFLAGS += -DIMGUI_IMPL_OPENGL_LOADER_GLBINDING3
-# LIBS += -lglbinding
-## or the older version 2.x
-# CXXFLAGS += -DIMGUI_IMPL_OPENGL_LOADER_GLBINDING2
-# LIBS += -lglbinding
 
 ##---------------------------------------------------------------------
 ## BUILD FLAGS PER PLATFORM
@@ -120,7 +93,7 @@ all: $(EXE)
 $(EXE): $(OBJS)
 	$(CXX) -o $@ $^ $(CXXFLAGS) $(LIBS)
 	rm -f $(OBJS) imgui.ini
-	./$(EXE) "apple2.jpg"
+	./$(EXE) "input_images/apple2.jpg"
 
 clean:
-	rm -f $(EXE) $(OBJS)
+	rm -f $(EXE) $(OBJS) imgui.ini output_iamge.png

@@ -4,16 +4,16 @@ flat in vec3 colours[3];
 flat in vec3 vert[3];
 in vec3 coord;
 
-uniform vec4 weight;
+// uniform vec4 weight;
 uniform int mode;
 const int constant_color_avg = 0;
 const int constant_color_center = 1;
-const int bilinear_interpolation = 2;
-const int step_constant = 3;
-const int step_bilinear = 4;
-const int quadratic_step = 5;
-const int quadratic_interpolation = 6;
-const int cubic_interpolation = 7;
+const int bilinear_interpolation_no_opt = 2;
+const int linear_split_constant = 3;
+const int quadratic_split_constant = 4;
+const int bilinear_interpolation_opt = 5;
+const int biquadratic_interpolation = 6;
+const int bicubic_interpolation = 7;
 
 const int triangles_per_side = 52;
 
@@ -85,11 +85,11 @@ void main()
       color = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
       break;
     // ---------------------------------------------------------------------
-    case bilinear_interpolation:
+    case bilinear_interpolation_no_opt:
       color = coord.x * colours[0] + coord.y * colours[1] + coord.z * colours[2];
       break;
     // ---------------------------------------------------------------------
-    case step_constant:
+    case linear_split_constant:
       {
         float c0 = var3[(gl_PrimitiveID * 3) + 0];
         float c1 = var3[(gl_PrimitiveID * 3) + 1];
@@ -124,45 +124,7 @@ void main()
       }
       break;
     // ---------------------------------------------------------------------
-    case step_bilinear:
-      {
-        float c0 = var3[(gl_PrimitiveID * 3) + 0];
-        float c1 = var3[(gl_PrimitiveID * 3) + 1];
-        float c2 = var3[(gl_PrimitiveID * 3) + 2];
-
-        vec3 color1 = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
-        vec3 color2 = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
-
-        // c2 = 1 -> vertical line (inf slope)
-        if (c2 >= 0.5f && c2 <= 1.5f)
-        {
-          if (normal_coord2.x < c0)
-          {
-            color = color1;
-          }
-          else
-          {
-            color = color2;
-          }
-        }
-        else if (c2 >= -0.5f && c2 <= 0.5f) // c2 = 0 -> normal case y = c0 + c1*x
-        {
-          if (normal_coord2.x * c1 + c0 > normal_coord2.y)
-          {
-            color = color1;
-          }
-          else
-          {
-            color = color2;
-          }
-        }
-        else
-        {
-          color = coord.x * colours[0] + coord.y * colours[1] + coord.z * colours[2];
-        }
-      }
-      break;
-    case quadratic_step:
+    case quadratic_split_constant:
       {
         // change to take the quadratic polynomial -> take derivative vector -> take dot product
         float c0 = var3[(gl_PrimitiveID * 3) + 0];
@@ -182,15 +144,23 @@ void main()
         }
       }
       break;
-    case quadratic_interpolation:
+    // ---------------------------------------------------------------------
+    case bilinear_interpolation_opt:
       {
         // get all the color values of the control points
-        // vec3 color_p200 = colours[0];
-        // vec3 color_p002 = colours[1];
-        // vec3 color_p020 = colours[2];
-        // vec3 color_p200 = colours[0];
-        // vec3 color_p002 = colours[2];
-        // vec3 color_p020 = colours[1];
+        vec3 color_p100 = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
+        vec3 color_p010 = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
+        vec3 color_p001 = vec3(var3[gl_PrimitiveID * 3], var3[(gl_PrimitiveID * 3) + 1], var3[(gl_PrimitiveID * 3) + 2]);
+
+        color = coord.x * color_p100 +
+                coord.y * color_p010 +
+                coord.z * color_p001;
+      }
+      break;
+    // ---------------------------------------------------------------------
+    case biquadratic_interpolation:
+      {
+        // get all the color values of the control points
         vec3 color_p101 = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
         vec3 color_p011 = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
         vec3 color_p110 = vec3(var3[gl_PrimitiveID * 3], var3[(gl_PrimitiveID * 3) + 1], var3[(gl_PrimitiveID * 3) + 2]);
@@ -207,8 +177,10 @@ void main()
                 coord.z * coord.z * color_p002;
       }
       break;
-    case cubic_interpolation:
+    // ---------------------------------------------------------------------
+    case bicubic_interpolation:
       {
+        // get all the color values of the control points
         vec3 p300 = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
         vec3 p210 = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
         vec3 p201 = vec3(var3[gl_PrimitiveID * 3], var3[(gl_PrimitiveID * 3) + 1], var3[(gl_PrimitiveID * 3) + 2]);
@@ -220,6 +192,7 @@ void main()
         vec3 p012 = vec3(var9[gl_PrimitiveID * 3], var9[(gl_PrimitiveID * 3) + 1], var9[(gl_PrimitiveID * 3) + 2]);
         vec3 p003 = vec3(var10[gl_PrimitiveID * 3], var10[(gl_PrimitiveID * 3) + 1], var10[(gl_PrimitiveID * 3) + 2]);
 
+        // compute the output color
         color = p300 * coord.x * coord.x * coord.x +
                 3.0f * p210 * coord.x * coord.x * coord.y +
                 3.0f * p201 * coord.x * coord.x * coord.z +
@@ -233,7 +206,6 @@ void main()
       }
       break;
   }
-
   FragColor = vec4(color, 1.0);
 }
 
