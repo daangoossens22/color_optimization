@@ -96,4 +96,4 @@ $(EXE): $(OBJS)
 	./$(EXE) "input_images/apple2.jpg"
 
 clean:
-	rm -f $(EXE) $(OBJS) imgui.ini output_iamge.png
+	rm -f $(EXE) $(OBJS) imgui.ini output_iamge.png edge_map.png saliency_map.png
