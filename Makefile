@@ -93,7 +93,7 @@ all: $(EXE)
 $(EXE): $(OBJS)
 	$(CXX) -o $@ $^ $(CXXFLAGS) $(LIBS)
 	rm -f $(OBJS) imgui.ini
-	./$(EXE) "input_images/apple2.jpg"
+	./$(EXE) "input_images/apple.jpg"
 
 clean:
 	rm -f $(EXE) $(OBJS) imgui.ini output_iamge.png edge_map.png saliency_map.png
