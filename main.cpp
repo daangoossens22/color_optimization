@@ -8,6 +8,7 @@
 #include <iterator>
 #include <vector>
 #include <numeric>
+#include <chrono> // for timing information
 
 // image processing libraries (edge detection / saliency detection)
 #include <opencv2/core.hpp>
@@ -22,7 +23,7 @@
 
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
-#include "shader.h" // load and link shaders
+#include "shader.h" // load and link shaders from files
 
 // computer graphics function/matrices to pass to the shaders (orthogonal projection matrix)
 #include <glm/glm.hpp>
@@ -32,29 +33,24 @@
 // save and convert the image from the opengl buffer to some image format
 #include <FreeImage.h>
 
-constexpr int max_triangles_per_side = 52; // all the nvidia uniform buffer can handle for my computer (16224 floats per uniform)
-constexpr float saliency_bias = 0.1;
-constexpr int points_tested_per_side = 4;
+// all the uniform buffer at a minimum for any computer (16224 floats per uniform) (some computer can do more, see: GL_MAX_UNIFORM_BUFFER_BINDINGS)
+constexpr int max_triangles_per_side = 52;
+constexpr int num_floats_per_buffer = max_triangles_per_side * max_triangles_per_side * 2 * 3; // # triangles * 3 (r, g, b)
+constexpr float saliency_bias = 0.1; // small bias to the saliency so no pixel will be "completely" ignored in saliency mode
 enum saliency_method { fine_grained, spectral_residual };
+constexpr int num_uniform_buffers = 15;
+
+const char* image_save_path = "output_image.png";
+const char* saliency_map_save_path = "saliency_map.png";
+const char* edge_map_save_path = "edge_map.png";
+const char* vert_shader_path = "shader.vert";
+const char* geom_shader_path = "shader.geom";
+const char* frag_shader_path = "shader.frag";
 
 constexpr int width = 1600;
 constexpr int height = 900;
 
-struct pixel_info
-{
-    float color[3];
-    float saliency_value;
-    // bounding box coords (0, 0) bottom left vertex (1, 1) top right vertex
-    float x;
-    float y;
-};
-
-struct barycentric_coordinates
-{
-    float s;
-    float t;
-    float u;
-};
+// general info all/most coloring methods need
 struct update_coloring_info
 {
     int num_triangles_x;
@@ -63,55 +59,73 @@ struct update_coloring_info
     cv::Mat saliency_map;
     bool use_saliency;
 };
+struct pixel_info
+{
+    float color[3];
+    float saliency_value;
+    // bounding box coords; (0, 0) bottom left vertex (1, 1) top right vertex
+    float x;
+    float y;
+};
+struct barycentric_coordinates
+{
+    float s;
+    float t;
+    float u;
+};
 
 //  -------------------------------------------------------
 // | function pointers for function that are at the bottom |
 //  -------------------------------------------------------
+// startup functions
 static void glfw_error_callback(int error, const char* description);
 void load_picture(cv::Mat& img, const std::string file_name);
+GLFWwindow* glfw_setup();
+
+// intermediate function for some of the coloring algorithms
 void update_saliency_map(const cv::Mat& img, cv::Mat& saliency_map, int saliency_mode);
 void get_edges(const cv::Mat& img, cv::Mat& edges, int low_threshold);
-GLFWwindow* glfw_setup();
 
 void update_vertex_buffer(int num_triangles_x, int num_triangles_y, float vertices[], const float vertex_colors[]);
 void update_index_buffer(int num_triangles_x, int num_triangles_y, unsigned int indices[]);
 
-void update_vertex_colors(update_coloring_info& coloring_info, float vertices[], float vertex_colors[]);
-void update_triangle_colors(update_coloring_info& coloring_info, const float vertices[], float triangle_colors1[]);
-void update_constant_colors(update_coloring_info& coloring_info, const float vertices[], float triangle_colors1[]);
-void update_linear_split_constant_color(update_coloring_info& coloring_info, const cv::Mat& edges, const float vertices[], int num_edge_detection_points, float* triangle_colors[]);
-void update_quadratic_split_constant_color(update_coloring_info& coloring_info, const cv::Mat& edges, const float vertices[], int num_edge_detection_points, float* triangle_colors[]);
-
-void optimize_nth_bezier_triangle(int n, int index, std::vector<pixel_info>& pixels, std::vector<barycentric_coordinates>& bary_coords, float** triangle_colors, int triangle_colors_base);
-void update_general_interpolation(int n, update_coloring_info& coloring_info, const float vertices[], float** triangle_colors, std::function<void (int, int, std::vector<pixel_info>&, std::vector<barycentric_coordinates>&, float**, int)> interpolation_step);
+// coloring methods
+void update_vertex_colors(const update_coloring_info& coloring_info, float vertices[], float vertex_colors[]);
+void update_triangle_center_colors(const update_coloring_info& coloring_info, const float vertices[], float triangle_colors1[]);
+void update_constant_colors(const update_coloring_info& coloring_info, const float vertices[], float triangle_colors1[]);
+void update_linear_split_constant_color(const update_coloring_info& coloring_info, const cv::Mat& edges, const float vertices[], int num_edge_detection_points, float* triangle_colors[]);
+void update_quadratic_split_constant_color(const update_coloring_info& coloring_info, const cv::Mat& edges, const float vertices[], int num_edge_detection_points, float* triangle_colors[]);
+void update_general_interpolation(int n, const update_coloring_info& coloring_info, const float vertices[], float** triangle_colors);
 
 int main(int argc, const char** argv)
 {
-    // load image into opencv buffer
+    //  --------------------------------------
+    // | startup stuff opencv, window, shader |
+    //  --------------------------------------
     update_coloring_info coloring_info;
     cv::Mat img_temp;
     cv::Mat edges;
 
+    // load the image from the command line into the opencv image buffer
     if (argc != 2)
     { 
         std::cout << "Incorrect arguments. Should be of the form {program_name} {image_location}" << std::endl;
         return 1;
     }
     std::string image_location = argv[1];
-    std::ifstream iimage(image_location);
+    std::ifstream iimage(image_location); // to test if the image exists
     if (!iimage)
     {
         std::cout << "File path: " << image_location << " does not exist";
         return 2;
     }
     load_picture(img_temp, image_location);
-    cv::flip(img_temp, coloring_info.img, 0);
+    cv::flip(img_temp, coloring_info.img, 0); // so the coordinate systems orientation for both opengl and opencv are alligned (opencv values range [0,1], opencv [0, img height/width])
 
     GLFWwindow* window = glfw_setup();
     if (!window) { return 1; };
 
-    Shader shader ("shader.vert", "shader.geom", "shader.frag");
-    constexpr int num_triangles = max_triangles_per_side * max_triangles_per_side * 2 * 3; // is actually # triangles * 3
+    Shader shader (vert_shader_path, geom_shader_path, frag_shader_path);
     
     //  -------------------------
     // | generate opengl buffers |
@@ -124,17 +138,16 @@ int main(int argc, const char** argv)
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    constexpr int c = 15;
-    unsigned int variables[c] = { 0 };
-    for (int i = 0; i < c; ++i)
+    unsigned int variables[num_uniform_buffers] = { 0 };
+    for (int i = 0; i < num_uniform_buffers; ++i)
     {
         glGenBuffers(1, &variables[i]);
         glBindBuffer(GL_UNIFORM_BUFFER, variables[i]);
-        glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_triangles, NULL, GL_DYNAMIC_DRAW);
+        glBufferData(GL_UNIFORM_BUFFER, sizeof(GLfloat) * num_floats_per_buffer, NULL, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
     }
-    unsigned int inddd[c] = { 0 };
-    for (int i = 0; i < c; ++i)
+    unsigned int inddd[num_uniform_buffers] = { 0 };
+    for (int i = 0; i < num_uniform_buffers; ++i)
     {
         inddd[i] = glGetUniformBlockIndex(shader.ID, ("variables" + std::to_string(i+1)).c_str());
         glUniformBlockBinding(shader.ID, inddd[i], i);
@@ -151,15 +164,17 @@ int main(int argc, const char** argv)
     bool use_saliency = true;
     int saliency_mode = 0;
     bool show_saliency_map = false;
-    int mode = 8;
+    int mode = 0;
     int num_edge_detection_points = 4;
     int low_threshold = 59;
     bool show_edge_map = false;
     bool save_image = false;
-    ImVec4 vcolor1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
-    ImVec4 vcolor2 = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
-    ImVec4 vcolor3 = ImVec4(0.0f, 0.0f, 1.0f, 1.0f);
-    // float weightx = 0.0f; // for debugging purposes
+    std::chrono::duration<double, std::milli> ms_taken;
+    // // for debugging purposes
+    // ImVec4 vcolor1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
+    // ImVec4 vcolor2 = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
+    // ImVec4 vcolor3 = ImVec4(0.0f, 0.0f, 1.0f, 1.0f);
+    // float weightx = 0.0f;
     // float weighty = 0.0f;
     // float weightz = 0.0f;
     // float weightw = 0.0f;
@@ -174,16 +189,11 @@ int main(int argc, const char** argv)
 
     // make an array for the vertex and triangle colors that can later be loaded into an opengl buffer
     float vertex_colors[(max_triangles_per_side + 1) * (max_triangles_per_side + 1) * 3];
-    float* triangle_colors[c];
-    for (int i = 0; i < c; ++i)
+    float* triangle_colors[num_uniform_buffers];
+    for (int i = 0; i < num_uniform_buffers; ++i)
     {
-        triangle_colors[i] = new float[num_triangles];
+        triangle_colors[i] = new float[num_floats_per_buffer];
     }
-
-    // // see how many buffers can be bound
-    // int max_buffer_bindings;
-    // glGetIntegerv(GL_MAX_UNIFORM_BUFFER_BINDINGS, &max_buffer_bindings);
-    // std::cout << max_buffer_bindings << std::endl;
 
     //  -----------
     // | Main loop |
@@ -219,18 +229,18 @@ int main(int argc, const char** argv)
                                         "linear split (constant color)\0"
                                         "quadratic split (constant color)\0"
                                         "bilinear interpolation (opt)\0"
-                                        "biquadratic interpolation\0"
-                                        "bicubic interpolation\0"
-                                        "biquartic interpolation\0"
+                                        "biquadratic interpolation (opt)\0"
+                                        "bicubic interpolation (opt)\0"
+                                        "biquartic interpolation (opt)\0"
                                         "\0");
 
             ImGui::SliderInt("min # of edge detection points needed (step)", &num_edge_detection_points, 2, 20);
             ImGui::SliderInt("theshold edge detection", &low_threshold, 0, 160);
             ImGui::Checkbox("show edge map (close window by pressing any key)", &show_edge_map);
 
-            ImGui::ColorEdit3("vertex 1", (float*)&vcolor1);
-            ImGui::ColorEdit3("vertex 2", (float*)&vcolor2);
-            ImGui::ColorEdit3("vertex 3", (float*)&vcolor3);
+            // ImGui::ColorEdit3("vertex 1", (float*)&vcolor1);
+            // ImGui::ColorEdit3("vertex 2", (float*)&vcolor2);
+            // ImGui::ColorEdit3("vertex 3", (float*)&vcolor3);
             // ImGui::SliderFloat("float 1", &weightx, 0.0f, 3.0f);
             // ImGui::SliderFloat("float 2", &weighty, 0.0f, 3.0f);
             // ImGui::SliderFloat("float 3", &weightz, 0.0f, 3.0f);
@@ -238,26 +248,25 @@ int main(int argc, const char** argv)
 
             ImGui::Checkbox("save image", &save_image);
 
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+            ImGui::Text("Computation took: %.3f ms", ms_taken.count());
+            // ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
             ImGui::End();
         }
         if (square_grid) { num_triangles_dimensions[1] = num_triangles_dimensions[0]; }
         // demo window that displays most dear imgui functionality
         if (show_demo_window) { ImGui::ShowDemoWindow(&show_demo_window); }
-
         if (save_image)
         {
             GLubyte* pixels = new GLubyte[3 * height * height];
             glReadPixels(width - height, 0, height, height, GL_BGR, GL_UNSIGNED_BYTE, pixels);
 
             FIBITMAP* image = FreeImage_ConvertFromRawBits(pixels, height, height, 3 * height, 24, 0x0000FF, 0x00FF00, 0xFF0000, false);
-            FreeImage_Save(FIF_PNG, image, "output_image.png", 0);
+            FreeImage_Save(FIF_PNG, image, image_save_path, 0);
             FreeImage_Unload(image);
             delete[] pixels;
 
             save_image = false;
         }
-
 
         //  --------------------------------------
         // | Clear values and set opengl viewport |
@@ -307,13 +316,16 @@ int main(int argc, const char** argv)
             coloring_info.num_triangles_y = num_triangles_dimensions[1];
             coloring_info.use_saliency = use_saliency;
 
+            auto t1 = std::chrono::high_resolution_clock::now(); // used to measure the time taken for a coloring method to complete
+
+            // compute the variables for the given coloring mode, so that it can be send to the shader to output an image
             switch (mode)
             {
                 case 0:
                     update_constant_colors(coloring_info, vertices, triangle_colors[0]);
                     break;
                 case 1:
-                    update_triangle_colors(coloring_info, vertices, triangle_colors[0]);
+                    update_triangle_center_colors(coloring_info, vertices, triangle_colors[0]);
                     break;
                 case 2:
                     update_vertex_colors(coloring_info, vertices, vertex_colors);
@@ -325,23 +337,25 @@ int main(int argc, const char** argv)
                     update_quadratic_split_constant_color(coloring_info, edges, vertices, num_edge_detection_points, triangle_colors);
                     break;
                 case 5:
-                    update_general_interpolation(1, coloring_info, vertices, triangle_colors, optimize_nth_bezier_triangle);
+                    update_general_interpolation(1, coloring_info, vertices, triangle_colors);
                     break;
                 case 6:
-                    update_general_interpolation(2, coloring_info, vertices, triangle_colors, optimize_nth_bezier_triangle);
+                    update_general_interpolation(2, coloring_info, vertices, triangle_colors);
                     break;
                 case 7:
-                    update_general_interpolation(3, coloring_info, vertices, triangle_colors, optimize_nth_bezier_triangle);
+                    update_general_interpolation(3, coloring_info, vertices, triangle_colors);
                     break;
                 case 8:
-                    update_general_interpolation(4, coloring_info, vertices, triangle_colors, optimize_nth_bezier_triangle);
+                    update_general_interpolation(4, coloring_info, vertices, triangle_colors);
                     break;
             }
+            auto t2 = std::chrono::high_resolution_clock::now();
+            ms_taken = t2 - t1;
         }
 
         //  --------------------------------------------------------------------------------------------------------
-        // | shows the saliency map when the checkbox is selected in the imgui window                               |
-        // | currently can only be exited by pressing any key (if the close button is pressed it locks the program) |
+        // | shows (and saves) the saliency map when the checkbox is selected in the imgui window                   |
+        // | currently can only be closed by pressing any key (if the close button is pressed it locks the program) |
         //  --------------------------------------------------------------------------------------------------------
         if (show_saliency_map)
         {
@@ -350,7 +364,7 @@ int main(int argc, const char** argv)
             cv::namedWindow("saliency map", cv::WINDOW_NORMAL);
             cv::resizeWindow("saliency map", 600, 600);
             cv::imshow("saliency map", temp_saliency_map);
-            cv::imwrite("saliency_map.png", temp_saliency_map * 255);
+            cv::imwrite(saliency_map_save_path, temp_saliency_map * 255);
             cv::waitKey(0);
             cv::destroyAllWindows();
             show_saliency_map = false;
@@ -362,7 +376,7 @@ int main(int argc, const char** argv)
             cv::namedWindow("edge map", cv::WINDOW_NORMAL);
             cv::resizeWindow("edge map", 600, 600);
             cv::imshow("edge map", edges);
-            cv::imwrite("edge_map.png", edges);
+            cv::imwrite(edge_map_save_path, edges);
             cv::waitKey(0);
             cv::destroyAllWindows();
             show_edge_map = false;
@@ -370,12 +384,13 @@ int main(int argc, const char** argv)
 
         //  ---------------------------------
         // | put all the buffers on the gpu  |
-        // | binding all the uniform buffers |
         //  ---------------------------------
-        for (int i = 0; i < c; ++i)
+
+        // binding all the uniform buffers
+        for (int i = 0; i < num_uniform_buffers; ++i)
         {
             glBindBuffer(GL_UNIFORM_BUFFER, variables[i]);
-            glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_triangles, triangle_colors[i]);
+            glBufferSubData(GL_UNIFORM_BUFFER, 0, 4 * num_floats_per_buffer, triangle_colors[i]);
             glBindBuffer(GL_UNIFORM_BUFFER, 0);
         }
 
@@ -393,6 +408,9 @@ int main(int argc, const char** argv)
         glm::mat4 proj = glm::ortho(0.0f, 1.0f, 0.0f, 1.0f, -10.0f, 10.0f); // have a coordinate system (0, 0) bottom left and (1, 1) top right
         glUniformMatrix4fv(glGetUniformLocation(shader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
 
+        //  ----------------------------------------------------------------
+        // | run the shader and swap the buffer with the glfw screen buffer |
+        //  ----------------------------------------------------------------
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, num_vertices, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
@@ -404,7 +422,7 @@ int main(int argc, const char** argv)
     //  ---------
     // | Cleanup |
     //  ---------
-    for (int i = 0; i < c; ++i)
+    for (int i = 0; i < num_uniform_buffers; ++i)
     {
         delete[] triangle_colors[i];
     }
@@ -422,10 +440,12 @@ int main(int argc, const char** argv)
     return 0;
 }
 
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
-void get_pixels_in_triangle(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& img, const cv::Mat& saliency_map, std::function<bool (float x, float y)> count_pixel, std::vector<pixel_info>& triangle_info)
+//  ---------------------------------------------------------------------------------------------------------------------------------------------------
+// | returns a list of pixels (pixel_info struct) that lie in the given box coordinates and satisfy the given count_pixel function                     |
+// | count_pixel funciton; takes in the pixel (x, y) in box space coordinates and returns true if it should save it and false when it can be discarded |
+// | box space coordinates (0,0) bottom left bounding box (1, 1) top right bounding box (box has 2 triangles in it which are rendered by the shader)   |
+//  ---------------------------------------------------------------------------------------------------------------------------------------------------
+void get_pixels_in_triangle(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& img, const cv::Mat& saliency_map, const std::function<bool (float x, float y)> count_pixel, std::vector<pixel_info>& triangle_info)
 {
     for (int j = 0; j < height_triangle_pixels; j++)
     {
@@ -455,10 +475,12 @@ void get_pixels_in_triangle(float bottom_left_x_pixels, float bottom_left_y_pixe
     }
 }
 
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
-void get_average_color(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float average[3], std::function<bool (float x, float y)> count_pixel)
+//  -------------------------------------------------------------------------------------------------------------------------------------------
+// | given the a collection of pixels (pixel_info struct), it will return                                                                      |
+// | the average color over the pixels if saliency_mode is not selected                                                                        |
+// | the weighted average color over the pixels with weights being the saliency values of the corresponding pixel if saliency_mode is selected |
+//  -------------------------------------------------------------------------------------------------------------------------------------------
+void get_average_color(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float average[3], const std::function<bool (float x, float y)> count_pixel)
 {
     std::vector<pixel_info> triangle;
     get_pixels_in_triangle(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, img, saliency_map, count_pixel, triangle);
@@ -473,9 +495,10 @@ void get_average_color(float bottom_left_x_pixels, float bottom_left_y_pixels, f
     average[2] /= (divv * 255.0f);
 }
 
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
+//  ----------------------------------------------------------------------------------------------------------------------------------------
+// | given an edge map and bounding box coordinates, it gets the edge coordinates in bounding box coord space used in the pixel_info struct |
+// | then it sorts those edge coordinates in two group; the pixel is covered by the "left/bottom" triangle or the "right/top" triangle      |
+//  ----------------------------------------------------------------------------------------------------------------------------------------
 void get_edge_points_box(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& edges, std::vector<double>& x_points_1, std::vector<double>& y_points_1, std::vector<double>& x_points_2, std::vector<double>& y_points_2)
 {
     float top_right_x_pixels = bottom_left_x_pixels + width_triangle_pixels;
@@ -512,9 +535,12 @@ void get_edge_points_box(float bottom_left_x_pixels, float bottom_left_y_pixels,
     }
 }
 
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
+//  ---------------------------------------------------------------------------------------------------
+// | converts the (x, y) boxcoords used in the pixel_info struct to the corresponding                  |
+// | barycentric coordinates of the given triangle (left or right)                                     |
+// | left triangle = given a square a "left" triangle covers all vertices except the top right one     |
+// | right triangle = given a square a "right" triangle covers all vertices except the bottom left one |
+//  ---------------------------------------------------------------------------------------------------
 std::vector<barycentric_coordinates> convert_to_barycentric(const std::vector<pixel_info>& triangle, bool left_triangle)
 {
     std::vector<barycentric_coordinates> res;
@@ -538,12 +564,12 @@ std::vector<barycentric_coordinates> convert_to_barycentric(const std::vector<pi
     return res;
 }
 
-// -----------------------------------------------------------------------------
-// for each vertex it gets the color at that point in the actual image and updates the vertex color attribute in the vertex buffer
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
-void update_vertex_colors(update_coloring_info& coloring_info, float vertices[], float vertex_colors[])
+//  ---------------------------------------------------------------------
+// | coloring method: bilinear interpolation (no opt)                    |
+// | for each vertex it gets the color at that point in the actual image |
+// | and updates the vertex color attribute in the vertex buffer         |
+//  ---------------------------------------------------------------------
+void update_vertex_colors(const update_coloring_info& coloring_info, float vertices[], float vertex_colors[])
 {
     // set/update shader parameters
     int x_max = coloring_info.num_triangles_x + 1;
@@ -575,14 +601,14 @@ void update_vertex_colors(update_coloring_info& coloring_info, float vertices[],
     }
 }
 
-// -----------------------------------------------------------------------------
-// for each triangle it gets a number of points inside the triangle and gets the color and saliency value of that position in the image
-// then it takes a weighted average if saliency is turned on, otherwise it computes the average without the saliency weights
-// sets those values in the triangle color array which can be accessed later in the glsl shader by their gl_PrimitiveID (triangle number)
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
-void update_constant_colors(update_coloring_info& coloring_info, const float vertices[], float triangle_colors1[])
+//  ----------------------------------------------------------------------------------------------------------------------------------
+// | coloring method: constant color (average)                                                                                        |
+// | for each triangle it gets the pixels inside the triangle with their corresponding saliency value                                 |
+// | if saliency_mode is turned on -> compute the weighted average of the collected pixels with their corresponding saliency value    |
+// | if saliency_mode is turned off -> computes the normal average of the collected pixels colors                                     |
+// | stores those values in a uniform buffer which can be accessed later in the glsl shader by their gl_PrimitiveID (triangle number) |
+//  ----------------------------------------------------------------------------------------------------------------------------------
+void update_constant_colors(const update_coloring_info& coloring_info, const float vertices[], float triangle_colors1[])
 {
     int x_max = coloring_info.num_triangles_x;
     int y_max = coloring_info.num_triangles_y;
@@ -605,7 +631,6 @@ void update_constant_colors(update_coloring_info& coloring_info, const float ver
             get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, coloring_info.img, coloring_info.saliency_map, coloring_info.use_saliency, average_1, [](float x, float y) {return x + y <= 1.0f;});
             get_average_color(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, coloring_info.img, coloring_info.saliency_map, coloring_info.use_saliency, average_2, [](float x, float y) {return x + y >= 1.0f;});
 
-
             int basee = (x + (y * x_max)) * 6;
             triangle_colors1[basee + 0] = average_1[0];
             triangle_colors1[basee + 1] = average_1[1];
@@ -619,12 +644,12 @@ void update_constant_colors(update_coloring_info& coloring_info, const float ver
 
 
 
-// -----------------------------------------------------------------------------
-// for each triangle it gets the color at the center of the triangle and updates the vertex color attribute in the vertex buffer
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
-void update_triangle_colors(update_coloring_info& coloring_info, const float vertices[], float triangle_colors1[])
+//  -------------------------------------------------------------------
+// | coloring method: constant color (center point)                    |
+// | for each triangle it gets the color at the center of the triangle |
+// | and updates the appropriate uniform buffer with that value        |
+//  -------------------------------------------------------------------
+void update_triangle_center_colors(const update_coloring_info& coloring_info, const float vertices[], float triangle_colors1[])
 {
     int x_max = coloring_info.num_triangles_x;
     int y_max = coloring_info.num_triangles_y;
@@ -662,10 +687,14 @@ void update_triangle_colors(update_coloring_info& coloring_info, const float ver
     }
 }
 
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
-void compute_line_and_update_colors(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[], int num_edge_detection_points, std::function<bool (float x, float y)> which_triangle, bool left_triangle, std::vector<double>& x_points, std::vector<double>& y_points)
+//  ---------------------------------------------------------------------------------------------------------------------
+// | used by function update_linear_split_constant_color as the bulk of the computation                                  |
+// | a line is approximates from a list of edge pixel coordinates if there are more than num_edge_detection_points found |
+// | if there is a line -> compute the average color at either side of that line                                         |
+// | if there is no line -> compute the average color over the whole triangle                                            |
+// | puts those line variables and colors in the uniform buffer to be used by the shader to render the image             |
+//  ---------------------------------------------------------------------------------------------------------------------
+void compute_line_and_update_colors(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[], int num_edge_detection_points, const std::function<bool (float x, float y)> which_triangle, bool left_triangle, std::vector<double>& x_points, std::vector<double>& y_points)
 {
     float total[3] = {0.0, 0.0, 0.0};
     float total_2[3] = {0.0, 0.0, 0.0};
@@ -725,9 +754,14 @@ void compute_line_and_update_colors(float bottom_left_x_pixels, float bottom_lef
     }
 }
 
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
+// 
+//  --------------------------------------------------------------------------------------------------------------------------------
+// | used by function update_quadratic_split_constant_color as the bulk of the computation                                          |
+// | approximates a quadratic equation from a list of edge pixel coordinates if there are more than num_edge_detection_points found |
+// | if there is a fit -> compute the average color at either side of that equation                                                 |
+// | if there is no fit -> compute the average color over the whole triangle                                                        |
+// | puts those line variables and colors in the uniform buffer to be used by the shader to render the image                        |
+//  --------------------------------------------------------------------------------------------------------------------------------
 void compute_quadratic_and_update_colors(float bottom_left_x_pixels, float bottom_left_y_pixels, float width_triangle_pixels, float height_triangle_pixels, const cv::Mat& img, const cv::Mat& saliency_map, bool use_saliency, float triangle_colors1[], float triangle_colors2[], float variable_per_triangles[], int num_edge_detection_points, std::function<bool (float x, float y)> which_triangle, bool left_triangle, std::vector<double>& x_points, std::vector<double>& y_points)
 {
     float total[3] = {0.0, 0.0, 0.0};
@@ -817,10 +851,15 @@ void compute_quadratic_and_update_colors(float bottom_left_x_pixels, float botto
     }
 }
 
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
-void update_linear_split_constant_color(update_coloring_info& coloring_info, const cv::Mat& edges, const float vertices[], int num_edge_detection_points, float* triangle_colors[])
+//  ---------------------------------------------------------------------------------------------------------
+// | coloring method: linear split with constant color                                                       |
+// | for each triangle it finds the edge pixels in that triangle                                             |
+// | approximates that with a line if there are more than num_edge_detection_points found                    |
+// | if there is a line -> compute the average color at either side of that line                             |
+// | if there is no line -> compute the average color over the whole triangle                                |
+// | puts those line variables and colors in the uniform buffer to be used by the shader to render the image |
+//  ---------------------------------------------------------------------------------------------------------
+void update_linear_split_constant_color(const update_coloring_info& coloring_info, const cv::Mat& edges, const float vertices[], int num_edge_detection_points, float* triangle_colors[])
 {
     int x_max = coloring_info.num_triangles_x;
     int y_max = coloring_info.num_triangles_y;
@@ -845,7 +884,6 @@ void update_linear_split_constant_color(update_coloring_info& coloring_info, con
             std::vector<double> y_points_2;
             get_edge_points_box(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, edges, x_points_1, y_points_1, x_points_2, y_points_2);
 
-            // std::copy(x_points_1.begin(), x_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
             // if !points.empty -> calculate straight line through points
             // else -> constant color
 
@@ -859,10 +897,15 @@ void update_linear_split_constant_color(update_coloring_info& coloring_info, con
     }
 }
 
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
-void update_quadratic_split_constant_color(update_coloring_info& coloring_info, const cv::Mat& edges, const float vertices[], int num_edge_detection_points, float* triangle_colors[])
+//  -------------------------------------------------------------------------------------------------------------
+// | coloring method: quadratic split with constant color                                                        |
+// | for each triangle it finds the edge pixels in that triangle                                                 |
+// | approximates that with a quadratic equation if there are more than num_edge_detection_points found          |
+// | if there is a fit -> compute the average color at either side of that equation                              |
+// | if there is no fit -> compute the average color over the whole triangle                                     |
+// | puts those equation variables and colors in the uniform buffer to be used by the shader to render the image |
+//  -------------------------------------------------------------------------------------------------------------
+void update_quadratic_split_constant_color(const update_coloring_info& coloring_info, const cv::Mat& edges, const float vertices[], int num_edge_detection_points, float* triangle_colors[])
 {
     int x_max = coloring_info.num_triangles_x;
     int y_max = coloring_info.num_triangles_y;
@@ -901,19 +944,18 @@ void update_quadratic_split_constant_color(update_coloring_info& coloring_info, 
     }
 }
 
-//  -------------------------
-// | Interpolation functions |
-//  -------------------------
 
+//  ---------------------------------------------------------------------------------------------------------
+// | simple factorial funciton that only accepts number >= 0 and returns the mathematical expression number! |
+//  ---------------------------------------------------------------------------------------------------------
 int fact(int n)
 {
-    return (n == 0) ? 1 : n * fact(n-1);
+    return (n <= 0) ? 1 : n * fact(n-1);
 }
-
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
-void optimize_nth_bezier_triangle(int n, int index, std::vector<pixel_info>& pixels, std::vector<barycentric_coordinates>& bary_coords, float** triangle_colors, int triangle_colors_base)
+//  ----------------------------------------------------------------------------------------------------------------------
+// | finds the best fit for the datapoints (pixel data) with a nth degree bezier triangle model for a given color channel |
+//  ----------------------------------------------------------------------------------------------------------------------
+void optimize_nth_bezier_triangle(int n, int color_channel, std::vector<pixel_info>& pixels, std::vector<barycentric_coordinates>& bary_coords, float** triangle_colors, int triangle_colors_base)
 {
     int num_data_points = (int)pixels.size();
     double chisq;
@@ -934,18 +976,18 @@ void optimize_nth_bezier_triangle(int n, int index, std::vector<pixel_info>& pix
         float t = bary_coords[p].t;
         float u = bary_coords[p].u;
 
-        int index2 = 0;
+        int index = 0;
         for (int i = 0; i <= n; ++i)
         {
             for (int j = 0; i+j <= n; ++j)
             {
                 int k = n - i - j;
                 float multiplier = (numerator / (float)(fact(i) * fact(j) * fact(k)));
-                gsl_matrix_set(X, p, index2, multiplier * std::pow(s, i) * std::pow(t, j) * std::pow(u, k));
-                ++index2;
+                gsl_matrix_set(X, p, index, multiplier * std::pow(s, i) * std::pow(t, j) * std::pow(u, k));
+                ++index;
             }
         }
-        gsl_vector_set(y, p, pixels[p].color[index] / 255.0f);
+        gsl_vector_set(y, p, pixels[p].color[color_channel] / 255.0f);
     }
 
     gsl_multifit_linear_workspace* work = gsl_multifit_linear_alloc(num_data_points, num_control_points);
@@ -953,7 +995,7 @@ void optimize_nth_bezier_triangle(int n, int index, std::vector<pixel_info>& pix
 
     for (int i = 0; i < num_control_points; ++i)
     {
-        triangle_colors[i][triangle_colors_base + index] = (float)gsl_vector_get(c, (i));
+        triangle_colors[i][triangle_colors_base + color_channel] = (float)gsl_vector_get(c, (i));
     }
 
     gsl_multifit_linear_free(work);
@@ -965,9 +1007,11 @@ void optimize_nth_bezier_triangle(int n, int index, std::vector<pixel_info>& pix
 
 
 //  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
+// | coloring method: nonlinear interpolation                                                               |
+// | for each triangle, approximate the pixels within that triangle with a nth degree bezier triangle       |
+// | n=1 -> bilinear interpolation; n=2 biquadratic interpolation, etc                                      |
 //  --------------------------------------------------------------------------------------------------------
-void update_general_interpolation(int n, update_coloring_info& coloring_info, const float vertices[], float** triangle_colors, std::function<void (int, int, std::vector<pixel_info>&, std::vector<barycentric_coordinates>&, float**, int)> interpolation_step)
+void update_general_interpolation(int n, const update_coloring_info& coloring_info, const float vertices[], float** triangle_colors)
 {
     int x_max = coloring_info.num_triangles_x;
     int y_max = coloring_info.num_triangles_y;
@@ -999,43 +1043,42 @@ void update_general_interpolation(int n, update_coloring_info& coloring_info, co
             std::vector<barycentric_coordinates> bary_1 = convert_to_barycentric(triangle_1, true);
             std::vector<barycentric_coordinates> bary_2 = convert_to_barycentric(triangle_2, false);
 
+            // find bast fit parameters and save the value to the appropriate uniform buffer
             int basee = (x + (y * x_max)) * 6;
-            interpolation_step(n, 0, triangle_1, bary_1, triangle_colors, basee);
-            interpolation_step(n, 1, triangle_1, bary_1, triangle_colors, basee);
-            interpolation_step(n, 2, triangle_1, bary_1, triangle_colors, basee);
-            interpolation_step(n, 0, triangle_2, bary_2, triangle_colors, basee + 3);
-            interpolation_step(n, 1, triangle_2, bary_2, triangle_colors, basee + 3);
-            interpolation_step(n, 2, triangle_2, bary_2, triangle_colors, basee + 3);
+            optimize_nth_bezier_triangle(n, 0, triangle_1, bary_1, triangle_colors, basee);
+            optimize_nth_bezier_triangle(n, 1, triangle_1, bary_1, triangle_colors, basee);
+            optimize_nth_bezier_triangle(n, 2, triangle_1, bary_1, triangle_colors, basee);
+            optimize_nth_bezier_triangle(n, 0, triangle_2, bary_2, triangle_colors, basee + 3);
+            optimize_nth_bezier_triangle(n, 1, triangle_2, bary_2, triangle_colors, basee + 3);
+            optimize_nth_bezier_triangle(n, 2, triangle_2, bary_2, triangle_colors, basee + 3);
 
         }
     }
 }
 
-// -----------------------------------------------------------------------------
-// updates the array that defines where the vertices are
-// defines the vertex position in such a way that it makes a square grid with the appropriate number of vertices given the number of triangles at each side (selected in imgui)
-// (0, 0) is bottom left (1, 1) is top right
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
+//  ----------------------------------------------------------------------------------------------------------
+// | updates the array that defines where the vertices are                                                    |
+// | defines the vertex position in such a way that it makes a square grid                                    |
+// | , with the appropriate number of vertices given the number of triangles at each side (selected in imgui) |
+// | (0, 0) is bottom left (1, 1) is top right                                                                |
+//  ----------------------------------------------------------------------------------------------------------
 void update_vertex_buffer(int num_triangles_x, int num_triangles_y, float vertices[], const float vertex_colors[])
 {
-    // set/update shader parameters
     int x_max = num_triangles_x + 1;
     int y_max = num_triangles_y + 1;
     float x_step = 1.0f / ((float)x_max - 1.0f);
     float y_step = 1.0f / ((float)y_max - 1.0f);
     
-    // set vertices buffer (vertices + color)
     for (int y = 0; y < y_max; y++)
     {
         for (int x = 0; x < x_max; x++)
         {
             int base_index = (x + y * x_max) * 6;
+            // set vertex position
             vertices[base_index + 0] = x * x_step;
             vertices[base_index + 1] = y * y_step;
             vertices[base_index + 2] = 0.0f;
-            // random colors
+            // set colors
             vertices[base_index + 3] = vertex_colors[base_index / 2];
             vertices[base_index + 4] = vertex_colors[base_index / 2 + 1];
             vertices[base_index + 5] = vertex_colors[base_index / 2 + 2];
@@ -1043,15 +1086,12 @@ void update_vertex_buffer(int num_triangles_x, int num_triangles_y, float vertic
     }
 }
 
-// -----------------------------------------------------------------------------
-// updates the array that defines which vertices form a triangle
-// triangle 0 is at bottom left and the last triangle is at the top right (numbering left to right and then bottom to top)
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
+//  -------------------------------------------------------------------------------------------------------------------------
+// | updates the array that defines which vertices from the vertex buffer form a triangle                                    |
+// | triangle 0 is at bottom left and the last triangle is at the top right (numbering left to right and then bottom to top) |
+//  -------------------------------------------------------------------------------------------------------------------------
 void update_index_buffer(int num_triangles_x, int num_triangles_y, unsigned int indices[])
 {
-    // set index buffer (array of the vertices that form a triangle)
     int x_max = num_triangles_x;
     int y_max = num_triangles_y;
     for (int y = 0; y < y_max; y++)
@@ -1076,15 +1116,13 @@ void update_index_buffer(int num_triangles_x, int num_triangles_y, unsigned int 
     }
 }
 
-// -----------------------------------------------------------------------------
-// computes the saliency map from the image buffer given the selected saliency mode (from the imgui window)
-// and replaces the saliency map buffer with it
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
+//  ----------------------------------------------------------------------------------------------------------
+// | computes the saliency map from the image buffer given the selected saliency mode (from the imgui window) |
+//  ----------------------------------------------------------------------------------------------------------
 void update_saliency_map(const cv::Mat& img, cv::Mat& saliency_map, int saliency_mode)
 {
-    // compute saliencymap
+    // fine_grained: more detailed, per pixel saliency map (recommended)
+    // spectral_residual: less detail, more blocky saliency map
     switch (saliency_mode)
     {
         case saliency_method::fine_grained:
@@ -1102,9 +1140,9 @@ void update_saliency_map(const cv::Mat& img, cv::Mat& saliency_map, int saliency
     }
 }
 
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
+//  -----------------------------------------------------------
+// | uses opencv to generate an edge map of the provided image |
+//  -----------------------------------------------------------
 void get_edges(const cv::Mat& img, cv::Mat& edges, int low_threshold)
 {
     // cv::Mat img_gray;
@@ -1125,11 +1163,9 @@ void get_edges(const cv::Mat& img, cv::Mat& edges, int low_threshold)
     cv::Canny(edges, edges, low_threshold, low_threshold * ratios, kernel_size);
 }
 
-// -----------------------------------------------------------------------------
-// uses opencv to load an image to the image buffer
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
+//  --------------------------------------------------
+// | uses opencv to load an image to the image buffer |
+//  --------------------------------------------------
 void load_picture(cv::Mat& img, const std::string file_name)
 {
     // load image
@@ -1139,15 +1175,11 @@ void load_picture(cv::Mat& img, const std::string file_name)
     {
         std::cout << "error loading image: " << image_path << std::endl;
     }
-
-    // std::cout << img << std::endl;
 }
 
-// -----------------------------------------------------------------------------
-// create the glfw window and the opengl context within the window
-//  --------------------------------------------------------------------------------------------------------
-// |                                                                                                        |
-//  --------------------------------------------------------------------------------------------------------
+//  -----------------------------------------------------------------
+// | create the glfw window and the opengl context within the window |
+//  -----------------------------------------------------------------
 GLFWwindow* glfw_setup()
 {
     // Setup window
