@@ -6,16 +6,14 @@ if len(sys.argv) != 3:
 else:
     original = cv2.imread(sys.argv[1])
     result = cv2.imread(sys.argv[2])
-    original2 = None
-    result2 = None
-    h_min = None
-    w_min = None
 
     h_o, w_o, c_o = original.shape
     h_r, w_r, c_r = result.shape
+    h_min = min(h_o, h_r)
+    w_min = min(w_o, w_r)
+    original2 = original
+    result2 = result
     if (h_o != h_r or w_o != w_r):
-        h_min = min(h_o, h_r)
-        w_min = min(w_o, w_r)
         original2 = cv2.resize(original, (w_min, h_min), interpolation = cv2.INTER_AREA)
         result2 = cv2.resize(result, (w_min, h_min), interpolation = cv2.INTER_AREA)
 

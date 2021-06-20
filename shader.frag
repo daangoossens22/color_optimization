@@ -92,6 +92,9 @@ vec2 get_coords_triangle_space(in vec2 normal_coor)
   return normal_coord2;
 }
 
+
+vec3 compute_general_interpolation(in int n);
+
 void main()
 {
   vec3 color = vec3(0.0, 0.0, 0.0);
@@ -168,101 +171,81 @@ void main()
     // ---------------------------------------------------------------------
     case bilinear_interpolation_opt:
       {
-        // get all the color values of the control points
-        vec3 color_p100 = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
-        vec3 color_p010 = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
-        vec3 color_p001 = vec3(var3[gl_PrimitiveID * 3], var3[(gl_PrimitiveID * 3) + 1], var3[(gl_PrimitiveID * 3) + 2]);
-
-        color = coord.x * color_p100 +
-                coord.y * color_p010 +
-                coord.z * color_p001;
+        color = compute_general_interpolation(1);
       }
       break;
     // ---------------------------------------------------------------------
     case biquadratic_interpolation:
       {
-        // get all the color values of the control points
-        vec3 color_p101 = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
-        vec3 color_p011 = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
-        vec3 color_p110 = vec3(var3[gl_PrimitiveID * 3], var3[(gl_PrimitiveID * 3) + 1], var3[(gl_PrimitiveID * 3) + 2]);
-        vec3 color_p200 = vec3(var4[gl_PrimitiveID * 3], var4[(gl_PrimitiveID * 3) + 1], var4[(gl_PrimitiveID * 3) + 2]);
-        vec3 color_p020 = vec3(var5[gl_PrimitiveID * 3], var5[(gl_PrimitiveID * 3) + 1], var5[(gl_PrimitiveID * 3) + 2]);
-        vec3 color_p002 = vec3(var6[gl_PrimitiveID * 3], var6[(gl_PrimitiveID * 3) + 1], var6[(gl_PrimitiveID * 3) + 2]);
-
-        // compute the output color
-        color = coord.x * coord.x * color_p200 +
-                2.0f * coord.x * coord.y * color_p110 +
-                2.0f * coord.x * coord.z * color_p101 +
-                coord.y * coord.y * color_p020 +
-                2.0f * coord.y * coord.z * color_p011 +
-                coord.z * coord.z * color_p002;
+        color = compute_general_interpolation(2);
       }
       break;
     // ---------------------------------------------------------------------
     case bicubic_interpolation:
       {
-        // get all the color values of the control points
-        vec3 p300 = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
-        vec3 p210 = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
-        vec3 p201 = vec3(var3[gl_PrimitiveID * 3], var3[(gl_PrimitiveID * 3) + 1], var3[(gl_PrimitiveID * 3) + 2]);
-        vec3 p120 = vec3(var4[gl_PrimitiveID * 3], var4[(gl_PrimitiveID * 3) + 1], var4[(gl_PrimitiveID * 3) + 2]);
-        vec3 p111 = vec3(var5[gl_PrimitiveID * 3], var5[(gl_PrimitiveID * 3) + 1], var5[(gl_PrimitiveID * 3) + 2]);
-        vec3 p102 = vec3(var6[gl_PrimitiveID * 3], var6[(gl_PrimitiveID * 3) + 1], var6[(gl_PrimitiveID * 3) + 2]);
-        vec3 p030 = vec3(var7[gl_PrimitiveID * 3], var7[(gl_PrimitiveID * 3) + 1], var7[(gl_PrimitiveID * 3) + 2]);
-        vec3 p021 = vec3(var8[gl_PrimitiveID * 3], var8[(gl_PrimitiveID * 3) + 1], var8[(gl_PrimitiveID * 3) + 2]);
-        vec3 p012 = vec3(var9[gl_PrimitiveID * 3], var9[(gl_PrimitiveID * 3) + 1], var9[(gl_PrimitiveID * 3) + 2]);
-        vec3 p003 = vec3(var10[gl_PrimitiveID * 3], var10[(gl_PrimitiveID * 3) + 1], var10[(gl_PrimitiveID * 3) + 2]);
-
-        // compute the output color
-        color = p300 * coord.x * coord.x * coord.x +
-                3.0f * p210 * coord.x * coord.x * coord.y +
-                3.0f * p201 * coord.x * coord.x * coord.z +
-                3.0f * p120 * coord.x * coord.y * coord.y +
-                6.0f * p111 * coord.x * coord.y * coord.z +
-                3.0f * p102 * coord.x * coord.z * coord.z +
-                p030 * coord.y * coord.y * coord.y +
-                3.0f * p021 * coord.y * coord.y * coord.z +
-                3.0f * p012 * coord.y * coord.z * coord.z +
-                p003 * coord.z * coord.z * coord.z;
+        color = compute_general_interpolation(3);
       }
       break;
     case biquartic_interpolation:
       {
-        // get all the color values of the control points
-        vec3 p400 = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
-        vec3 p310 = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
-        vec3 p301 = vec3(var3[gl_PrimitiveID * 3], var3[(gl_PrimitiveID * 3) + 1], var3[(gl_PrimitiveID * 3) + 2]);
-        vec3 p220 = vec3(var4[gl_PrimitiveID * 3], var4[(gl_PrimitiveID * 3) + 1], var4[(gl_PrimitiveID * 3) + 2]);
-        vec3 p211 = vec3(var5[gl_PrimitiveID * 3], var5[(gl_PrimitiveID * 3) + 1], var5[(gl_PrimitiveID * 3) + 2]);
-        vec3 p202 = vec3(var6[gl_PrimitiveID * 3], var6[(gl_PrimitiveID * 3) + 1], var6[(gl_PrimitiveID * 3) + 2]);
-        vec3 p130 = vec3(var7[gl_PrimitiveID * 3], var7[(gl_PrimitiveID * 3) + 1], var7[(gl_PrimitiveID * 3) + 2]);
-        vec3 p121 = vec3(var8[gl_PrimitiveID * 3], var8[(gl_PrimitiveID * 3) + 1], var8[(gl_PrimitiveID * 3) + 2]);
-        vec3 p112 = vec3(var9[gl_PrimitiveID * 3], var9[(gl_PrimitiveID * 3) + 1], var9[(gl_PrimitiveID * 3) + 2]);
-        vec3 p103 = vec3(var10[gl_PrimitiveID * 3], var10[(gl_PrimitiveID * 3) + 1], var10[(gl_PrimitiveID * 3) + 2]);
-        vec3 p040 = vec3(var11[gl_PrimitiveID * 3], var11[(gl_PrimitiveID * 3) + 1], var11[(gl_PrimitiveID * 3) + 2]);
-        vec3 p031 = vec3(var12[gl_PrimitiveID * 3], var12[(gl_PrimitiveID * 3) + 1], var12[(gl_PrimitiveID * 3) + 2]);
-        vec3 p022 = vec3(var13[gl_PrimitiveID * 3], var13[(gl_PrimitiveID * 3) + 1], var13[(gl_PrimitiveID * 3) + 2]);
-        vec3 p013 = vec3(var14[gl_PrimitiveID * 3], var14[(gl_PrimitiveID * 3) + 1], var14[(gl_PrimitiveID * 3) + 2]);
-        vec3 p004 = vec3(var15[gl_PrimitiveID * 3], var15[(gl_PrimitiveID * 3) + 1], var15[(gl_PrimitiveID * 3) + 2]);
-
-        // compute the output color
-        color = p400 * coord.x * coord.x * coord.x * coord.x +
-                4.0f * p310 * coord.x * coord.x * coord.x * coord.y +
-                4.0f * p301 * coord.x * coord.x * coord.x * coord.z +
-                6.0f * p220 * coord.x * coord.x * coord.y * coord.y +
-                12.0f * p211 * coord.x * coord.x * coord.y * coord.z +
-                6.0f * p202 * coord.x * coord.x * coord.z * coord.z +
-                4.0f * p130 * coord.x * coord.y * coord.y * coord.y +
-                12.0f * p121 * coord.x * coord.y * coord.y * coord.z +
-                12.0f * p112 * coord.x * coord.y * coord.z * coord.z +
-                4.0f * p103 * coord.x * coord.z * coord.z * coord.z +
-                p040 * coord.y * coord.y * coord.y * coord.y +
-                4.0f * p031 * coord. y * coord.y * coord.y * coord.z +
-                6.0f * p022 * coord.y * coord.y * coord.z * coord.z +
-                4.0f * p013 * coord.y * coord.z * coord.z * coord.z +
-                p004 * coord.z * coord.z * coord.z * coord.z;
+        color = compute_general_interpolation(4);
       }
       break;
   }
   FragColor = vec4(color, 1.0);
+}
+
+float fact(in int n)
+{
+  float result = 1;
+  for (int i = 1; i <= n; ++i)
+  {
+    result *= i;
+  }
+  return result;
+}
+// pow function of glsl give weird artifacts for intperpolation because casting the exponent to float gives weird errors
+// also this is probably faster than the general case where exponent is a float
+float pow2(in float base, in int exponent)
+{
+  float res = 1.0f;
+  for (int i = 0; i < exponent; ++i)
+  {
+    res *= base;
+  }
+  return res;
+}
+vec3 compute_general_interpolation(in int n)
+{
+  vec3 control_points[15];
+  control_points[0] = vec3(var1[gl_PrimitiveID * 3], var1[(gl_PrimitiveID * 3) + 1], var1[(gl_PrimitiveID * 3) + 2]);
+  control_points[1] = vec3(var2[gl_PrimitiveID * 3], var2[(gl_PrimitiveID * 3) + 1], var2[(gl_PrimitiveID * 3) + 2]);
+  control_points[2] = vec3(var3[gl_PrimitiveID * 3], var3[(gl_PrimitiveID * 3) + 1], var3[(gl_PrimitiveID * 3) + 2]);
+  control_points[3] = vec3(var4[gl_PrimitiveID * 3], var4[(gl_PrimitiveID * 3) + 1], var4[(gl_PrimitiveID * 3) + 2]);
+  control_points[4] = vec3(var5[gl_PrimitiveID * 3], var5[(gl_PrimitiveID * 3) + 1], var5[(gl_PrimitiveID * 3) + 2]);
+  control_points[5] = vec3(var6[gl_PrimitiveID * 3], var6[(gl_PrimitiveID * 3) + 1], var6[(gl_PrimitiveID * 3) + 2]);
+  control_points[6] = vec3(var7[gl_PrimitiveID * 3], var7[(gl_PrimitiveID * 3) + 1], var7[(gl_PrimitiveID * 3) + 2]);
+  control_points[7] = vec3(var8[gl_PrimitiveID * 3], var8[(gl_PrimitiveID * 3) + 1], var8[(gl_PrimitiveID * 3) + 2]);
+  control_points[8] = vec3(var9[gl_PrimitiveID * 3], var9[(gl_PrimitiveID * 3) + 1], var9[(gl_PrimitiveID * 3) + 2]);
+  control_points[9] = vec3(var10[gl_PrimitiveID * 3], var10[(gl_PrimitiveID * 3) + 1], var10[(gl_PrimitiveID * 3) + 2]);
+  control_points[10] = vec3(var11[gl_PrimitiveID * 3], var11[(gl_PrimitiveID * 3) + 1], var11[(gl_PrimitiveID * 3) + 2]);
+  control_points[11] = vec3(var12[gl_PrimitiveID * 3], var12[(gl_PrimitiveID * 3) + 1], var12[(gl_PrimitiveID * 3) + 2]);
+  control_points[12] = vec3(var13[gl_PrimitiveID * 3], var13[(gl_PrimitiveID * 3) + 1], var13[(gl_PrimitiveID * 3) + 2]);
+  control_points[13] = vec3(var14[gl_PrimitiveID * 3], var14[(gl_PrimitiveID * 3) + 1], var14[(gl_PrimitiveID * 3) + 2]);
+  control_points[14] = vec3(var15[gl_PrimitiveID * 3], var15[(gl_PrimitiveID * 3) + 1], var15[(gl_PrimitiveID * 3) + 2]);
+
+  int index = 0;
+  float numerator = fact(n);
+  vec3 res_color = vec3(0.0f, 0.0f, 0.0f);
+  for (int i = 0; i <= n; ++i)
+  {
+      for (int j = 0; i+j <= n; ++j)
+      {
+          int k = n - i - j;
+          float multiplier = (numerator / (fact(i) * fact(j) * fact(k)));
+          res_color += control_points[index] * multiplier * pow2(coord.x, i) * pow2(coord.y, j) * pow2(coord.z, k);
+          ++index;
+      }
+  }
+  return res_color;
 }
