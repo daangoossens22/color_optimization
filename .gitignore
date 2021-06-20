@@ -1,0 +1,9 @@
+imgui.ini
+*.o
+.vs
+.vscode
+edge_map.png
+saliency_map.png
+output_image.png
+coloring_methods
+tags
