@@ -111,7 +111,7 @@ int main(int argc, const char** argv)
     if (!window) { return 1; };
 
     Shader shader ("shader.vert", "shader.geom", "shader.frag");
-    int num_triangles = max_triangles_per_side * max_triangles_per_side * 2 * 3; // is actually # triangles * 3
+    constexpr int num_triangles = max_triangles_per_side * max_triangles_per_side * 2 * 3; // is actually # triangles * 3
     
     //  -------------------------
     // | generate opengl buffers |
@@ -124,7 +124,7 @@ int main(int argc, const char** argv)
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    int c = 15;
+    constexpr int c = 15;
     unsigned int variables[c] = { 0 };
     for (int i = 0; i < c; ++i)
     {
@@ -174,23 +174,11 @@ int main(int argc, const char** argv)
 
     // make an array for the vertex and triangle colors that can later be loaded into an opengl buffer
     float vertex_colors[(max_triangles_per_side + 1) * (max_triangles_per_side + 1) * 3];
-    float triangle_colors1[num_triangles];
-    float triangle_colors2[num_triangles];
-    float triangle_colors3[num_triangles];
-    float triangle_colors4[num_triangles];
-    float triangle_colors5[num_triangles];
-    float triangle_colors6[num_triangles];
-    float triangle_colors7[num_triangles];
-    float triangle_colors8[num_triangles];
-    float triangle_colors9[num_triangles];
-    float triangle_colors10[num_triangles];
-    float triangle_colors11[num_triangles];
-    float triangle_colors12[num_triangles];
-    float triangle_colors13[num_triangles];
-    float triangle_colors14[num_triangles];
-    float triangle_colors15[num_triangles];
-    float* triangle_colors[c] = { triangle_colors1, triangle_colors2, triangle_colors3, triangle_colors4, triangle_colors5, triangle_colors6, triangle_colors7, triangle_colors8, triangle_colors9, triangle_colors10, triangle_colors11, triangle_colors12, triangle_colors13, triangle_colors14, triangle_colors15 };
-    // float triangle_colors[c][num_triangles];
+    float* triangle_colors[c];
+    for (int i = 0; i < c; ++i)
+    {
+        triangle_colors[i] = new float[num_triangles];
+    }
 
     // // see how many buffers can be bound
     // int max_buffer_bindings;
@@ -416,6 +404,10 @@ int main(int argc, const char** argv)
     //  ---------
     // | Cleanup |
     //  ---------
+    for (int i = 0; i < c; ++i)
+    {
+        delete[] triangle_colors[i];
+    }
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
