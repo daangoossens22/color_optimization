@@ -47,7 +47,7 @@ The saliency map is used by the coloring method; average color no saliency. The 
 ||||
 ----|----|----
 target image|saliency map|edge map
-<img src="input_images/apple.jpg" width="100" height="100"> | <img src="README_images/saliency_map.png" width="100" height="100"> | <img src="README_images/edge_map.png" width="100" height="100">
+<img src="input_images/apple.jpg" width="100" height="100"> | <img src="README_images/example_saliency_map.png" width="100" height="100"> | <img src="README_images/example_edge_map.png" width="100" height="100">
 
 ## (potential) future work/ideas
 * Add more coloring methods
