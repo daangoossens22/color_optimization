@@ -34,11 +34,11 @@
 #include <FreeImage.h>
 
 // all the uniform buffer at a minimum for any computer (16224 floats per uniform) (some computer can do more, see: GL_MAX_UNIFORM_BUFFER_BINDINGS)
-constexpr int max_triangles_per_side = 52;
-constexpr int num_floats_per_buffer = max_triangles_per_side * max_triangles_per_side * 2 * 3; // # triangles * 3 (r, g, b)
-constexpr float saliency_bias = 0.1; // small bias to the saliency so no pixel will be "completely" ignored in saliency mode
+const int max_triangles_per_side = 52;
+const int num_floats_per_buffer = max_triangles_per_side * max_triangles_per_side * 2 * 3; // # triangles * 3 (r, g, b)
+const float saliency_bias = 0.1; // small bias to the saliency so no pixel will be "completely" ignored in saliency mode
 enum saliency_method { fine_grained, spectral_residual };
-constexpr int num_uniform_buffers = 15;
+const int num_uniform_buffers = 15;
 
 const char* image_save_path = "output_image.png";
 const char* saliency_map_save_path = "saliency_map.png";
@@ -47,8 +47,8 @@ const char* vert_shader_path = "shader.vert";
 const char* geom_shader_path = "shader.geom";
 const char* frag_shader_path = "shader.frag";
 
-constexpr int width = 1600;
-constexpr int height = 900;
+const int width = 1600;
+const int height = 900;
 
 // general info all/most coloring methods need
 struct update_coloring_info
@@ -170,14 +170,6 @@ int main(int argc, const char** argv)
     bool show_edge_map = false;
     bool save_image = false;
     std::chrono::duration<double, std::milli> ms_taken;
-    // // for debugging purposes
-    // ImVec4 vcolor1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
-    // ImVec4 vcolor2 = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
-    // ImVec4 vcolor3 = ImVec4(0.0f, 0.0f, 1.0f, 1.0f);
-    // float weightx = 0.0f;
-    // float weighty = 0.0f;
-    // float weightz = 0.0f;
-    // float weightw = 0.0f;
 
     // for checking if recalculation is needed
     int old_mode = -1;
@@ -237,14 +229,6 @@ int main(int argc, const char** argv)
             ImGui::SliderInt("min # of edge detection points needed (step)", &num_edge_detection_points, 2, 20);
             ImGui::SliderInt("theshold edge detection", &low_threshold, 0, 160);
             ImGui::Checkbox("show edge map (close window by pressing any key)", &show_edge_map);
-
-            // ImGui::ColorEdit3("vertex 1", (float*)&vcolor1);
-            // ImGui::ColorEdit3("vertex 2", (float*)&vcolor2);
-            // ImGui::ColorEdit3("vertex 3", (float*)&vcolor3);
-            // ImGui::SliderFloat("float 1", &weightx, 0.0f, 3.0f);
-            // ImGui::SliderFloat("float 2", &weighty, 0.0f, 3.0f);
-            // ImGui::SliderFloat("float 3", &weightz, 0.0f, 3.0f);
-            // ImGui::SliderFloat("float 4", &weightw, 0.0f, 3.0f);
 
             ImGui::Checkbox("save image", &save_image);
 
@@ -457,7 +441,7 @@ void get_pixels_in_triangle(float bottom_left_x_pixels, float bottom_left_y_pixe
             float saliency_val = saliency_map.at<float>(y2, x2);
             saliency_val += saliency_bias;
 
-            // sampled points are inside the triangle with 0.5 offset, so that the sample points are not on the sides of the triangle which can cause trouble at the edge of the image
+            // get the (x, y) in the middle of the pixel in box coordinates (where (0,0) is in the bottom left at (1, 1) at the top right of the bounding box)
             float x = ((float)i + 0.5) / (float)width_triangle_pixels;
             float y = ((float)j + 0.5) / (float)height_triangle_pixels;
             if (count_pixel(x, y))
@@ -787,7 +771,7 @@ void compute_quadratic_and_update_colors(float bottom_left_x_pixels, float botto
         int n = (int)x_points.size();
         double chisq;
         gsl_matrix *X, *cov;
-        gsl_vector *y, *c; // *w removed
+        gsl_vector *y, *c;
 
         X = gsl_matrix_alloc(n, 3);
         y = gsl_vector_alloc(n);
@@ -802,10 +786,8 @@ void compute_quadratic_and_update_colors(float bottom_left_x_pixels, float botto
             gsl_matrix_set(X, i, 2, x_points[i] * x_points[i]);
 
             gsl_vector_set(y, i, y_points[i]);
-            // gsl_vector_set(w, i, 1.0);
         }
         gsl_multifit_linear_workspace* work = gsl_multifit_linear_alloc(n, 3);
-        // gsl_multifit_wlinear(X, w, y, c, cov, &chisq, work);
         gsl_multifit_linear(X, y, c, cov, &chisq, work);
 
         // y = c0 + c1*x + c2*x*x
@@ -816,7 +798,6 @@ void compute_quadratic_and_update_colors(float bottom_left_x_pixels, float botto
         gsl_multifit_linear_free(work);
         gsl_matrix_free(X);
         gsl_vector_free(y);
-        // gsl_vector_free(w);
         gsl_vector_free(c);
         gsl_matrix_free(cov);
 
@@ -884,13 +865,9 @@ void update_linear_split_constant_color(const update_coloring_info& coloring_inf
             std::vector<double> y_points_2;
             get_edge_points_box(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, edges, x_points_1, y_points_1, x_points_2, y_points_2);
 
-            // if !points.empty -> calculate straight line through points
-            // else -> constant color
-
             int basee = (x + (y * x_max)) * 6;
             bool (*test_left_triangle)(float, float) = [](float x, float y) {return x + y <= 1.0f;};
             bool (*test_right_triangle)(float, float) = [](float x, float y) {return x + y >= 1.0f;};
-            // there are not enough points to calculate a line from
             compute_line_and_update_colors(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, coloring_info.img, coloring_info.saliency_map, coloring_info.use_saliency, &triangle_colors[0][basee], &triangle_colors[1][basee], &triangle_colors[2][basee], num_edge_detection_points, test_left_triangle, true, x_points_1, y_points_1);
             compute_line_and_update_colors(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, coloring_info.img, coloring_info.saliency_map, coloring_info.use_saliency, &triangle_colors[0][basee + 3], &triangle_colors[1][basee + 3], &triangle_colors[2][basee + 3], num_edge_detection_points, test_right_triangle, false, x_points_2, y_points_2);
         }
@@ -930,14 +907,9 @@ void update_quadratic_split_constant_color(const update_coloring_info& coloring_
             std::vector<double> y_points_2;
             get_edge_points_box(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, edges, x_points_1, y_points_1, x_points_2, y_points_2);
 
-            // std::copy(x_points_1.begin(), x_points_1.end(), std::ostream_iterator<float>(std::cout, " "));
-            // if !points.empty -> calculate straight line through points
-            // else -> constant color
-
             int basee = (x + (y * x_max)) * 6;
             bool (*test_left_triangle)(float, float) = [](float x, float y) {return x + y <= 1.0f;};
             bool (*test_right_triangle)(float, float) = [](float x, float y) {return x + y >= 1.0f;};
-            // there are not enough points to calculate a line from
             compute_quadratic_and_update_colors(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, coloring_info.img, coloring_info.saliency_map, coloring_info.use_saliency, &triangle_colors[0][basee], &triangle_colors[1][basee], &triangle_colors[2][basee], num_edge_detection_points, test_left_triangle, true, x_points_1, y_points_1);
             compute_quadratic_and_update_colors(bottom_left_x_pixels, bottom_left_y_pixels, width_triangle_pixels, height_triangle_pixels, coloring_info.img, coloring_info.saliency_map, coloring_info.use_saliency, &triangle_colors[0][basee + 3], &triangle_colors[1][basee + 3], &triangle_colors[2][basee + 3], num_edge_detection_points, test_right_triangle, false, x_points_2, y_points_2);
         }
@@ -1043,7 +1015,7 @@ void update_general_interpolation(int n, const update_coloring_info& coloring_in
             std::vector<barycentric_coordinates> bary_1 = convert_to_barycentric(triangle_1, true);
             std::vector<barycentric_coordinates> bary_2 = convert_to_barycentric(triangle_2, false);
 
-            // find bast fit parameters and save the value to the appropriate uniform buffer
+            // find bast fit parameters (for both triangles and their corresponding color channels) and save the value to the appropriate uniform buffer
             int basee = (x + (y * x_max)) * 6;
             optimize_nth_bezier_triangle(n, 0, triangle_1, bary_1, triangle_colors, basee);
             optimize_nth_bezier_triangle(n, 1, triangle_1, bary_1, triangle_colors, basee);
@@ -1152,6 +1124,7 @@ void get_edges(const cv::Mat& img, cv::Mat& edges, int low_threshold)
     // cv::blur(img_gray, edges, cv::Size(3, 3));
     // cv::Canny(edges, edges, low_threshold, low_threshold * ratios, kernel_size);
 
+    // can still be improved a lot
     cv::Mat img_filtered;
     cv::Mat img_gray;
     cv::bilateralFilter(img, img_filtered, 9, 75, 75);
