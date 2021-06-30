@@ -9,6 +9,9 @@
 #include <vector>
 #include <numeric>
 #include <chrono> // for timing information
+#include <filesystem>
+#include <string>
+#include <set>
 
 // image processing libraries (edge detection / saliency detection)
 #include <opencv2/core.hpp>
@@ -40,6 +43,7 @@ const float saliency_bias = 0.1; // small bias to the saliency so no pixel will 
 enum saliency_method { fine_grained, spectral_residual };
 const int num_uniform_buffers = 15;
 
+const char* image_path = "input_images";
 const char* image_save_path = "output_image.png";
 const char* saliency_map_save_path = "saliency_map.png";
 const char* edge_map_save_path = "edge_map.png";
@@ -106,20 +110,24 @@ int main(int argc, const char** argv)
     cv::Mat img_temp;
     cv::Mat edges;
 
-    // load the image from the command line into the opencv image buffer
-    if (argc != 2)
-    { 
-        std::cout << "Incorrect arguments. Should be of the form {program_name} {image_location}" << std::endl;
+    auto dir_path = std::filesystem::absolute(image_path);
+    std::vector<std::string> images;
+    std::vector<std::string> image_names;
+    for (const auto& entry : std::filesystem::directory_iterator(dir_path))
+    {
+        if ((std::set<std::string>{".png", ".jpg", ".jpeg"}).count(entry.path().extension()))
+        {
+            images.push_back(entry.path());
+            image_names.push_back(entry.path().filename());
+        }
+    }
+    if (images.empty())
+    {
+        std::cout << "no images in path: " << dir_path << std::endl;
         return 1;
     }
-    std::string image_location = argv[1];
-    std::ifstream iimage(image_location); // to test if the image exists
-    if (!iimage)
-    {
-        std::cout << "File path: " << image_location << " does not exist";
-        return 2;
-    }
-    load_picture(img_temp, image_location);
+
+    load_picture(img_temp, images[0]);
     cv::flip(img_temp, coloring_info.img, 0); // so the coordinate systems orientation for both opengl and opencv are alligned (opencv values range [0,1], opencv [0, img height/width])
 
     GLFWwindow* window = glfw_setup();
@@ -159,6 +167,7 @@ int main(int argc, const char** argv)
     //  -----------------
     bool show_demo_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+    int chosen_image = 0;
     int num_triangles_dimensions[2] = { 52, 52 };
     bool square_grid = true;
     bool use_saliency = true;
@@ -172,6 +181,7 @@ int main(int argc, const char** argv)
     std::chrono::duration<double, std::milli> ms_taken;
 
     // for checking if recalculation is needed
+    int old_chosen_image = -1;
     int old_mode = -1;
     int old_saliency_mode = -1;
     int old_num_triangles_dimensions[2] = { 0, 0};
@@ -207,6 +217,21 @@ int main(int argc, const char** argv)
             ImGui::Checkbox("Demo Window", &show_demo_window);
 
             ImGui::ColorEdit3("clear color", (float*)&clear_color);
+
+            // select the target image to be used (the options are from the "image path" variable)
+            if (ImGui::BeginCombo("image", image_names[chosen_image].c_str()))
+            {
+                for (int n = 0; n < (int)image_names.size(); ++n)
+                {
+                    bool is_selected = (chosen_image == n);
+                    if (ImGui::Selectable(image_names[n].c_str(), is_selected))
+                        chosen_image = n;
+                    if (is_selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+
 
             ImGui::SliderInt2("# triangles width x height", num_triangles_dimensions, 1, max_triangles_per_side);
             ImGui::Checkbox("square grid", &square_grid);
@@ -277,7 +302,9 @@ int main(int argc, const char** argv)
         //  ----------------------------------------------------------------------------------------------
         // | update triangle coloring variables (only when something changed and recalculation is needed) |
         //  ----------------------------------------------------------------------------------------------
-        if (!(mode == old_mode && 
+        if (!(
+              chosen_image == old_chosen_image &&
+              mode == old_mode && 
               num_triangles_dimensions[0] == old_num_triangles_dimensions[0] && 
               num_triangles_dimensions[1] == old_num_triangles_dimensions[1] && 
               use_saliency == old_use_saliency && 
@@ -285,6 +312,7 @@ int main(int argc, const char** argv)
               old_num_edge_detection_points == num_edge_detection_points &&
               old_low_threshold == low_threshold))
         {
+            old_chosen_image = chosen_image;
             old_mode = mode;
             old_num_triangles_dimensions[0] = num_triangles_dimensions[0];
             old_num_triangles_dimensions[1] = num_triangles_dimensions[1];
@@ -293,6 +321,8 @@ int main(int argc, const char** argv)
             old_num_edge_detection_points = num_edge_detection_points;
             old_low_threshold = low_threshold;
 
+            load_picture(img_temp, images[chosen_image]);
+            cv::flip(img_temp, coloring_info.img, 0); // so the coordinate systems orientation for both opengl and opencv are alligned (opencv values range [0,1], opencv [0, img height/width])
             update_saliency_map(coloring_info.img, coloring_info.saliency_map, saliency_mode);
             get_edges(coloring_info.img, edges, low_threshold);
 

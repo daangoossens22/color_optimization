@@ -23,13 +23,14 @@ OBJS = $(addsuffix .o, $(basename $(notdir $(SOURCES))))
 UNAME_S := $(shell uname -s)
 
 CXXFLAGS = -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends
-CXXFLAGS += -g -Wall -Wformat
+CXXFLAGS += -g -Wall -Wformat -std=c++17
 LIBS =
 
 CXXFLAGS += `pkg-config --cflags opencv4`
 LIBS += -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_saliency
 LIBS += `pkg-config --libs gsl`
 LIBS += -lfreeimage
+LIBS += -lstdc++fs
 
 ##---------------------------------------------------------------------
 ## OPENGL LOADER

@@ -23,9 +23,7 @@ To build the executable ```make``` can be executed. To clean all buildfiles ```m
 
 ### Running
 To run the executable, the following command can be run:
-```./coloring_methods {image_path}```
-
-For example: ```./coloring_methods input_images/apple.jpg```
+```./coloring_methods```
 
 Caution when opening the edge map or the saliency map, as they can only be closed by pressing any key on the keyboad. Closing it by pressing the x button, locks the program.
 
