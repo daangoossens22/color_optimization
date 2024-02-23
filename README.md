@@ -1,5 +1,7 @@
 # Research project CSE3000 (triangle coloring methods to approximate 2D images)
 
+Research paper can be found at the following [link](http://resolver.tudelft.nl/uuid:011e8730-fe22-4d6b-8a16-e5cf0554b5cb).
+
 ## Introduction
 Low-poly images are getting more popular, where an image is triangulated and colored mostly with constant colors or sometimes bilinear interpolation. Here different coloring methods will be explored. As this project is more focussed on coloring methods, it will only work with a fixed grid of triangles and a square input images (otherwise the result will be squashed into a square). The program uses the following basic pipeline to produce the images.
 
@@ -11,15 +13,16 @@ This program has only been tested on archbased linux distributions.
 
 ### Prerequisites
 Some programs are needed, namely:
-* glfw ( ```pacman -S glfw-x11``` or ```pacman -S glfw-wayland``` )
-* opencv ( ```pacman -S opencv opencv-samples``` )
-* gsl ( ```pacman -S gsl``` )
-* glm ( ```pacman -S glm``` )
-* freeimage ( ```pacman -S freeimage``` )
+* glfw
+* opencv
+* gsl
+* glm
+* freeimage
 
 ### Cloning and Building
-To get the project use : ```git clone --recurse-submodules https://github.com/daangoossens22/color_optimization.git```
-To build the executable ```make``` can be executed. To clean all buildfiles ```make clean``` can be executed.
+To get the project use : ```git clone --recurse-submodules https://github.com/daangoossens22/color_optimization.git```.
+
+To build the executable; ```make``` can be executed. To clean all buildfiles; ```make clean``` can be executed.
 
 ### Running
 To run the executable, the following command can be run:
